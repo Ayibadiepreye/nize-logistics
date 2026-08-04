@@ -4,13 +4,15 @@ services:
     env: node
     region: frankfurt
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install --omit=optional
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
+      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
+        value: true
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
