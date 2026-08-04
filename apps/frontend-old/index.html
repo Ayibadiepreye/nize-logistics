@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nize Logistics - Fast Pick-Up & Delivery Services</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Navigation Header -->
+    <header class="header" id="header">
+        <div class="container">
+            <div class="header-content">
+                <!-- Logo -->
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-truck-fast"></i>
+                    </div>
+                    <div class="logo-text">
+                        <div class="logo-main">
+                            <span class="logo-nize">Nize</span>
+                            <span class="logo-logistics">Logistics</span>
+                        </div>
+                        <div class="logo-tagline">...Plenty Waka</div>
+                    </div>
+                </div>
+
+                <!-- Navigation Menu -->
+                <nav class="nav" id="nav">
+                    <a href="#home" class="nav-link active">Home</a>
+                    <a href="#book-delivery" class="nav-link">Book Delivery</a>
+                    <a href="#track-order" class="nav-link">Track Order</a>
+                    <a href="#quotes" class="nav-link">Quotes</a>
+                    <a href="#services" class="nav-link">Services</a>
+                    <a href="#about" class="nav-link">About</a>
+                    <a href="#contact" class="nav-link">Contact</a>
+                </nav>
+
+                <!-- Header Actions -->
+                <div class="header-actions">
+                    <button class="theme-toggle" id="themeToggle">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <a href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I'd%20like%20to%20make%20an%20inquiry%20%2F%20book%20a%20delivery%20package." class="whatsapp-icon" target="_blank">
+                        <i class="fab fa-whatsapp"></i>
+                    </a>
+                    <button class="btn btn-primary btn-sm">Book Now</button>
+                    <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Hero Section -->
+        <section class="hero" id="home">
+            <div class="container">
+                <div class="hero-content">
+                    <!-- Left Content -->
+                    <div class="hero-left">
+                        <h1 class="hero-title">
+                            Swift Logistics<br>
+                            For <span class="highlight">"...Plenty<br>Waka"</span>
+                        </h1>
+                        <p class="hero-description">
+                            Nize Logistics provides instant, safe, and trackable pick-up & delivery services across Port Harcourt and Rivers State. Your documents, parcels, and e-commerce goods delivered fast!
+                        </p>
+                        <div class="hero-buttons">
+                            <button class="btn btn-primary btn-lg">
+                                <i class="fas fa-rocket"></i> Book Delivery
+                            </button>
+                            <a href="https://wa.me/2347063980120?text=Hi%20Nize%20Logistics!%20I%20want%20to%20request%20a%20fast%20pickup." class="btn btn-success btn-lg" target="_blank">
+                                <i class="fab fa-whatsapp"></i> Quick Contact
+                            </a>
+                        </div>
+                        
+                        <!-- Quick Track -->
+                        <div class="quick-track">
+                            <div class="track-input-wrapper">
+                                <input type="text" class="track-input" id="trackInput" placeholder="Enter Order ID (e.g. NZ-8402)...">
+                                <button class="btn btn-primary" id="trackBtn">Track</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Content - Fleet Card -->
+                    <div class="hero-right">
+                        <div class="fleet-card">
+                            <div class="fleet-icon">
+                                <i class="fas fa-motorcycle"></i>
+                            </div>
+                            <div class="fleet-header">
+                                <h3>Active Fleet Dispatch</h3>
+                                <p>Riders Standing By in Port Harcourt</p>
+                            </div>
+                            <div class="fleet-contact">
+                                <p class="fleet-label">Direct Flyer Order Lines:</p>
+                                <a href="tel:2347063980120" class="fleet-phone">
+                                    <span class="phone-icon"><i class="fas fa-phone"></i></span>
+                                    <span class="phone-number">+234 (0) 706 398 0120</span>
+                                    <span class="phone-action">Call Now</span>
+                                </a>
+                                <a href="tel:2348076690182" class="fleet-phone">
+                                    <span class="phone-icon"><i class="fas fa-phone"></i></span>
+                                    <span class="phone-number">+234 (0) 807 669 0182</span>
+                                    <span class="phone-action">Call Now</span>
+                                </a>
+                            </div>
+                            <div class="fleet-locations">
+                                <p class="locations-title">Port Harcourt Offices</p>
+                                <p class="location-item">
+                                    📍 <strong>Mile 1 Diobu:</strong> #11 Udi Street<br>
+                                    📍 <strong>Oroazi:</strong> 10 Ekengwon Street
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Section -->
+        <section class="stats">
+            <div class="container">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <h3 class="stat-number">15-30 Mins</h3>
+                        <p class="stat-label">Fast Express Pickup</p>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-motorcycle"></i>
+                        </div>
+                        <h3 class="stat-number">100% Verified</h3>
+                        <p class="stat-label">Trusted Dispatch Riders</p>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-box-open"></i>
+                        </div>
+                        <h3 class="stat-number">10,000+</h3>
+                        <p class="stat-label">Successful Deliveries</p>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-hand-holding-dollar"></i>
+                        </div>
+                        <h3 class="stat-number">Fair Pricing</h3>
+                        <p class="stat-label">No Hidden Charges</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Services Section -->
+        <section class="services" id="services">
+            <div class="container">
+                <div class="section-header">
+                    <span class="section-label">What We Do Best</span>
+                    <h2 class="section-title">Tailored Pick-Up & Delivery Solutions</h2>
+                    <p class="section-description">
+                        Whether you need a confidential document delivered across town or bulk merchandise sent to clients, Nize Logistics handles it smoothly.
+                    </p>
+                </div>
+
+                <div class="services-grid">
+                    <!-- Service 1 -->
+                    <div class="service-card">
+                        <div class="service-icon">
+                            <i class="fas fa-bolt"></i>
+                        </div>
+                        <h3 class="service-title">Same-Day Express Delivery</h3>
+                        <p class="service-description">
+                            Urgent package? Our dispatch riders prioritize your item for immediate pickup and direct door-to-door transit without delay.
+                        </p>
+                        <button class="service-link">Book Express <i class="fas fa-arrow-right"></i></button>
+                    </div>
+
+                    <!-- Service 2 -->
+                    <div class="service-card">
+                        <div class="service-icon service-icon-red">
+                            <i class="fas fa-file-alt"></i>
+                        </div>
+                        <h3 class="service-title">Document & Parcel Dispatch</h3>
+                        <p class="service-description">
+                            Secure escort for legal contracts, certificates, office files, and sensitive bank documents with recipient phone verification.
+                        </p>
+                        <button class="service-link">Send Documents <i class="fas fa-arrow-right"></i></button>
+                    </div>
+
+                    <!-- Service 3 -->
+                    <div class="service-card">
+                        <div class="service-icon service-icon-green">
+                            <i class="fas fa-shopping-bag"></i>
+                        </div>
+                        <h3 class="service-title">E-Commerce & Merchant Logistics</h3>
+                        <p class="service-description">
+                            Dedicated delivery support for online vendors, fashion boutiques, electronics retailers, and food vendors with Pay-on-Delivery option.
+                        </p>
+                        <button class="service-link">Check Bulk Rates <i class="fas fa-arrow-right"></i></button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA Section -->
+        <section class="cta">
+            <div class="container">
+                <div class="cta-content">
+                    <div class="cta-left">
+                        <span class="cta-label">Need a package moved right now?</span>
+                        <h3 class="cta-title">Call Nize Logistics Hotline</h3>
+                        <p class="cta-description">Our dispatch team in Port Harcourt is ready to handle your pickup immediately.</p>
+                    </div>
+                    <div class="cta-right">
+                        <a href="tel:+2347063980120" class="btn btn-outline-light btn-lg">
+                            <i class="fas fa-phone"></i> 0706 398 0120
+                        </a>
+                        <button class="btn btn-danger btn-lg">
+                            <i class="fas fa-calendar-check"></i> Book Online
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <!-- Company Info -->
+                <div class="footer-column">
+                    <div class="footer-logo">
+                        <div class="logo-icon">
+                            <i class="fas fa-truck-fast"></i>
+                        </div>
+                        <div class="logo-text">
+                            <div class="logo-main">
+                                <span class="logo-nize">Nize</span>
+                                <span class="logo-logistics">Logistics</span>
+                            </div>
+                            <div class="logo-tagline">...Plenty Waka</div>
+                        </div>
+                    </div>
+                    <p class="footer-description">
+                        Fast Pick-Up & Fast Delivery services across Port Harcourt and surrounding regions. Reliable, fast dispatch riders ensuring your packages arrive safely.
+                    </p>
+                    <div class="footer-badges">
+                        <span class="badge">⚡ Fast Pick-up</span>
+                        <span class="badge">🚀 Fast Delivery</span>
+                    </div>
+                </div>
+
+                <!-- Flyer Hotlines -->
+                <div class="footer-column">
+                    <h4 class="footer-title">Flyer Hotlines</h4>
+                    <div class="footer-links">
+                        <a href="tel:2347063980120" class="footer-phone">
+                            <i class="fas fa-phone"></i> +234 (0) 706 398 0120
+                        </a>
+                        <a href="tel:2348076690182" class="footer-phone">
+                            <i class="fas fa-phone"></i> +234 (0) 807 669 0182
+                        </a>
+                        <a href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I'd%20like%20to%20make%20an%20inquiry%20%2F%20book%20a%20delivery%20package." class="footer-whatsapp" target="_blank">
+                            <i class="fab fa-whatsapp"></i> WhatsApp Dispatch Line
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Office Locations -->
+                <div class="footer-column">
+                    <h4 class="footer-title">Office Locations</h4>
+                    <div class="footer-locations">
+                        <div class="location">
+                            <p class="location-label">Headquarters</p>
+                            <p class="location-address">44 Nsukka Street, Mile 1 Diobu, Port Harcourt, Rivers State</p>
+                        </div>
+                        <div class="location">
+                            <p class="location-label">Branch Office</p>
+                            <p class="location-address">10 Ekengwon Street, Oroazi, Port Harcourt, Rivers State</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Links -->
+                <div class="footer-column">
+                    <h4 class="footer-title">Quick Links</h4>
+                    <ul class="footer-links">
+                        <li><a href="#book-delivery">› Book a Pick-Up</a></li>
+                        <li><a href="#track-order">› Live Order Tracking</a></li>
+                        <li><a href="#quotes">› Price Quote Calculator</a></li>
+                        <li><a href="#services">› Our Logistics Services</a></li>
+                        <li><a href="#about">› About Nize Logistics</a></li>
+                        <li><a href="#contact">› Contact & Support</a></li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Footer Bottom -->
+            <div class="footer-bottom">
+                <p class="copyright">© 2026 Nize Logistics ("...Plenty Waka"). All rights reserved.</p>
+                <div class="footer-meta">
+                    <span><i class="fas fa-clock"></i> Mon - Sat: 7:00 AM - 7:00 PM</span>
+                    <span><i class="fas fa-check-circle"></i> Verified Dispatch Fleet</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Floating WhatsApp Button -->
+    <a href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I'd%20like%20to%20make%20an%20inquiry%20%2F%20book%20a%20delivery%20package." class="floating-whatsapp" target="_blank" title="Need Instant Pickup? Chat Us!">
+        <i class="fab fa-whatsapp"></i>
+    </a>
+
+    <script src="script.js"></script>
+</body>
+</html>

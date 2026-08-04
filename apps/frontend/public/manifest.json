@@ -1,0 +1,35 @@
+{
+  "name": "Nize Logistics",
+  "short_name": "Nize",
+  "description": "Fast, reliable delivery service across Nigeria - ...Plenty Waka",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1E5BBA",
+  "theme_color": "#1E5BBA",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["logistics", "delivery", "transportation"],
+  "shortcuts": [
+    {
+      "name": "Create Order",
+      "short_name": "Order",
+      "description": "Create a new delivery order",
+      "url": "/order",
+      "icons": [{ "src": "/logo.svg", "sizes": "96x96" }]
+    },
+    {
+      "name": "Track Package",
+      "short_name": "Track",
+      "description": "Track your package",
+      "url": "/track",
+      "icons": [{ "src": "/logo.svg", "sizes": "96x96" }]
+    }
+  ]
+}
