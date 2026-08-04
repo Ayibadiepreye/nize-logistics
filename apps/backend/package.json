@@ -31,7 +31,8 @@
     "web-push": "^3.6.6",
     "node-cron": "^3.0.3",
     "nanoid": "^5.0.4",
-    "paystack": "^2.0.1"
+    "paystack": "^2.0.1",
+    "axios": "^1.6.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
