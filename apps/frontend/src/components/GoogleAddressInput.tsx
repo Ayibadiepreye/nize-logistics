@@ -1,13 +1,30 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
 
 interface GoogleAddressInputProps {
   value: string;
   onChange: (address: string, lat: number, lng: number) => void;
   placeholder?: string;
   label?: string;
+}
+
+// Load Google Maps script
+function loadGoogleMapsScript(apiKey: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window.google !== 'undefined' && window.google.maps) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = (error) => reject(error);
+    document.head.appendChild(script);
+  });
 }
 
 export default function GoogleAddressInput({
@@ -21,39 +38,41 @@ export default function GoogleAddressInput({
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
   useEffect(() => {
-    const loader = new Loader({
-      apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
-      version: 'weekly',
-      libraries: ['places']
-    });
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error('Google Maps API key is missing');
+      return;
+    }
 
-    loader.load().then(() => {
-      setIsLoaded(true);
-      
-      if (inputRef.current) {
-        // Initialize autocomplete focused on Nigeria
-        const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
-          componentRestrictions: { country: 'ng' }, // Restrict to Nigeria
-          fields: ['formatted_address', 'geometry', 'name']
-        });
+    loadGoogleMapsScript(apiKey)
+      .then(() => {
+        setIsLoaded(true);
+        
+        if (inputRef.current && !autocompleteRef.current) {
+          // Initialize autocomplete focused on Nigeria
+          const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
+            componentRestrictions: { country: 'ng' }, // Restrict to Nigeria
+            fields: ['formatted_address', 'geometry', 'name']
+          });
 
-        autocomplete.addListener('place_changed', () => {
-          const place = autocomplete.getPlace();
-          
-          if (place.geometry && place.geometry.location) {
-            const address = place.formatted_address || place.name || '';
-            const lat = place.geometry.location.lat();
-            const lng = place.geometry.location.lng();
+          autocomplete.addListener('place_changed', () => {
+            const place = autocomplete.getPlace();
             
-            onChange(address, lat, lng);
-          }
-        });
+            if (place.geometry && place.geometry.location) {
+              const address = place.formatted_address || place.name || '';
+              const lat = place.geometry.location.lat();
+              const lng = place.geometry.location.lng();
+              
+              onChange(address, lat, lng);
+            }
+          });
 
-        autocompleteRef.current = autocomplete;
-      }
-    }).catch(err => {
-      console.error('Error loading Google Maps:', err);
-    });
+          autocompleteRef.current = autocomplete;
+        }
+      })
+      .catch(err => {
+        console.error('Error loading Google Maps:', err);
+      });
 
     return () => {
       if (autocompleteRef.current) {

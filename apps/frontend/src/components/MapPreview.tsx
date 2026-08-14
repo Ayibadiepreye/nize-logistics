@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
 
 interface MapPreviewProps {
   pickupLat?: number;
@@ -9,6 +8,24 @@ interface MapPreviewProps {
   dropoffLat?: number;
   dropoffLng?: number;
   className?: string;
+}
+
+// Load Google Maps script
+function loadGoogleMapsScript(apiKey: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window.google !== 'undefined' && window.google.maps) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = (error) => reject(error);
+    document.head.appendChild(script);
+  });
 }
 
 export default function MapPreview({
@@ -26,43 +43,45 @@ export default function MapPreview({
 
   // Initialize map
   useEffect(() => {
-    const loader = new Loader({
-      apiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!,
-      version: 'weekly',
-      libraries: ['places', 'geometry']
-    });
+    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+    if (!apiKey) {
+      console.error('Google Maps API key is missing');
+      return;
+    }
 
-    loader.load().then(() => {
-      setIsLoaded(true);
-      
-      if (mapRef.current && !mapInstanceRef.current) {
-        // Default center: Port Harcourt, Nigeria
-        const center = { lat: 4.8156, lng: 7.0498 };
+    loadGoogleMapsScript(apiKey)
+      .then(() => {
+        setIsLoaded(true);
         
-        mapInstanceRef.current = new google.maps.Map(mapRef.current, {
-          center,
-          zoom: 12,
-          styles: [
-            {
-              featureType: 'poi',
-              elementType: 'labels',
-              stylers: [{ visibility: 'off' }]
-            }
-          ]
-        });
+        if (mapRef.current && !mapInstanceRef.current) {
+          // Default center: Port Harcourt, Nigeria
+          const center = { lat: 4.8156, lng: 7.0498 };
+          
+          mapInstanceRef.current = new google.maps.Map(mapRef.current, {
+            center,
+            zoom: 12,
+            styles: [
+              {
+                featureType: 'poi',
+                elementType: 'labels',
+                stylers: [{ visibility: 'off' }]
+              }
+            ]
+          });
 
-        directionsRendererRef.current = new google.maps.DirectionsRenderer({
-          map: mapInstanceRef.current,
-          suppressMarkers: false,
-          polylineOptions: {
-            strokeColor: '#1E5BBA',
-            strokeWeight: 4
-          }
-        });
-      }
-    }).catch(err => {
-      console.error('Error loading Google Maps:', err);
-    });
+          directionsRendererRef.current = new google.maps.DirectionsRenderer({
+            map: mapInstanceRef.current,
+            suppressMarkers: false,
+            polylineOptions: {
+              strokeColor: '#1E5BBA',
+              strokeWeight: 4
+            }
+          });
+        }
+      })
+      .catch(err => {
+        console.error('Error loading Google Maps:', err);
+      });
   }, []);
 
   // Update markers and route when coordinates change
