@@ -70,10 +70,10 @@ export default function Footer() {
             <ul className="footer-links">
               <li><Link href="/order">› Book a Pick-Up</Link></li>
               <li><Link href="/track">› Live Order Tracking</Link></li>
-              <li><a href="#quotes">› Price Quote Calculator</a></li>
-              <li><a href="#services">› Our Logistics Services</a></li>
-              <li><a href="#about">› About Nize Logistics</a></li>
-              <li><a href="/#contact">› Contact & Support</a></li>
+              <li><Link href="/quotes">› Price Quote Calculator</Link></li>
+              <li><Link href="/#services">› Our Logistics Services</Link></li>
+              <li><Link href="/about">› About Nize Logistics</Link></li>
+              <li><Link href="/#contact">› Contact & Support</Link></li>
             </ul>
           </div>
         </div>

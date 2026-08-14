@@ -62,9 +62,9 @@ export default function Navbar() {
             <Link href="/order" className="nav-link">Book Delivery</Link>
             <Link href="/track" className="nav-link">Track Order</Link>
             <Link href="/quotes" className="nav-link">Quotes</Link>
-            <a href="#services" className="nav-link">Services</a>
+            <Link href="/#services" className="nav-link">Services</Link>
             <Link href="/about" className="nav-link">About</Link>
-            <a href="#contact" className="nav-link">Contact</a>
+            <Link href="/#contact" className="nav-link">Contact</Link>
           </nav>
 
           {/* Header Actions */}
