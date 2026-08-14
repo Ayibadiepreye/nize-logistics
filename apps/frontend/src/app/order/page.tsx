@@ -6,25 +6,12 @@ import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
-import AddressInput from '@/components/AddressInput';
+import GoogleAddressInput from '@/components/GoogleAddressInput';
+import MapPreview from '@/components/MapPreview';
 import api from '@/lib/api';
 
 // Dynamically import map to avoid SSR issues
-const OrderMap = dynamic(() => import('@/components/OrderMap'), { 
-  ssr: false,
-  loading: () => (
-    <div style={{ 
-      height: '100%', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      background: 'var(--bg-secondary)',
-      borderRadius: '16px'
-    }}>
-      <div className="spinner"></div>
-    </div>
-  )
-});
+// No longer needed - using MapPreview directly
 
 export default function CreateOrder() {
   const router = useRouter();
@@ -222,26 +209,24 @@ export default function CreateOrder() {
                     </div>
                   )}
 
-                  <AddressInput
+                  <GoogleAddressInput
                     value={formData.pickupAddress}
-                    onChange={(address) => {
+                    onChange={(address, lat, lng) => {
                       updateField('pickupAddress', address);
-                      // Use default Port Harcourt coordinates
-                      updateField('pickupLat', '4.8156');
-                      updateField('pickupLng', '7.0498');
+                      updateField('pickupLat', lat.toString());
+                      updateField('pickupLng', lng.toString());
                     }}
                     placeholder="Enter pickup address"
                     label="Pickup Address *"
                   />
 
                   <div style={{ marginTop: '16px' }}>
-                    <AddressInput
+                    <GoogleAddressInput
                       value={formData.dropoffAddress}
-                      onChange={(address) => {
+                      onChange={(address, lat, lng) => {
                         updateField('dropoffAddress', address);
-                        // Use default coordinates slightly offset
-                        updateField('dropoffLat', '4.8200');
-                        updateField('dropoffLng', '7.0600');
+                        updateField('dropoffLat', lat.toString());
+                        updateField('dropoffLng', lng.toString());
                       }}
                       placeholder="Enter dropoff address"
                       label="Dropoff Address *"
@@ -266,13 +251,11 @@ export default function CreateOrder() {
               <div className="card" style={{ height: '500px', padding: '16px' }}>
                 <h3 className="font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Map Preview</h3>
                 <div style={{ height: 'calc(100% - 40px)' }}>
-                  <OrderMap
+                  <MapPreview
                     pickupLat={parseFloat(formData.pickupLat)}
                     pickupLng={parseFloat(formData.pickupLng)}
                     dropoffLat={parseFloat(formData.dropoffLat)}
                     dropoffLng={parseFloat(formData.dropoffLng)}
-                    pickupAddress={formData.pickupAddress}
-                    dropoffAddress={formData.dropoffAddress}
                   />
                 </div>
               </div>
