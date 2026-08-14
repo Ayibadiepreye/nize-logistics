@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { loadGoogleMaps } from '@/lib/googleMaps';
 
 interface MapPreviewProps {
   pickupLat?: number;
@@ -8,24 +9,6 @@ interface MapPreviewProps {
   dropoffLat?: number;
   dropoffLng?: number;
   className?: string;
-}
-
-// Load Google Maps script
-function loadGoogleMapsScript(apiKey: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window.google !== 'undefined' && window.google.maps) {
-      resolve();
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = (error) => reject(error);
-    document.head.appendChild(script);
-  });
 }
 
 export default function MapPreview({
@@ -41,21 +24,12 @@ export default function MapPreview({
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  // Initialize map
+  // Initialize map once
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      console.error('Google Maps API key is missing');
-      return;
-    }
-
-    loadGoogleMapsScript(apiKey)
+    loadGoogleMaps()
       .then(() => {
-        setIsLoaded(true);
-        
         if (mapRef.current && !mapInstanceRef.current) {
-          // Default center: Port Harcourt, Nigeria
-          const center = { lat: 4.8156, lng: 7.0498 };
+          const center = { lat: 4.8156, lng: 7.0498 }; // Port Harcourt
           
           mapInstanceRef.current = new google.maps.Map(mapRef.current, {
             center,
@@ -68,6 +42,8 @@ export default function MapPreview({
               }
             ]
           });
+          
+          setIsLoaded(true);
         }
       })
       .catch(err => {
@@ -79,8 +55,12 @@ export default function MapPreview({
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current) return;
 
+    const map = mapInstanceRef.current;
+
     // Clear existing markers
-    markersRef.current.forEach(marker => marker.setMap(null));
+    markersRef.current.forEach(marker => {
+      marker.setMap(null);
+    });
     markersRef.current = [];
     
     // Clear existing polyline
@@ -90,13 +70,13 @@ export default function MapPreview({
     }
 
     const bounds = new google.maps.LatLngBounds();
-    let hasPoints = false;
+    let hasValidPoints = false;
 
     // Add pickup marker
-    if (pickupLat && pickupLng) {
+    if (pickupLat && pickupLng && !isNaN(pickupLat) && !isNaN(pickupLng)) {
       const pickupMarker = new google.maps.Marker({
         position: { lat: pickupLat, lng: pickupLng },
-        map: mapInstanceRef.current,
+        map: map,
         label: {
           text: 'A',
           color: 'white',
@@ -112,16 +92,17 @@ export default function MapPreview({
         },
         title: 'Pickup Location'
       });
+      
       markersRef.current.push(pickupMarker);
-      bounds.extend({ lat: pickupLat, lng: pickupLng });
-      hasPoints = true;
+      bounds.extend(new google.maps.LatLng(pickupLat, pickupLng));
+      hasValidPoints = true;
     }
 
     // Add dropoff marker
-    if (dropoffLat && dropoffLng) {
+    if (dropoffLat && dropoffLng && !isNaN(dropoffLat) && !isNaN(dropoffLng)) {
       const dropoffMarker = new google.maps.Marker({
         position: { lat: dropoffLat, lng: dropoffLng },
-        map: mapInstanceRef.current,
+        map: map,
         label: {
           text: 'B',
           color: 'white',
@@ -137,16 +118,20 @@ export default function MapPreview({
         },
         title: 'Dropoff Location'
       });
+      
       markersRef.current.push(dropoffMarker);
-      bounds.extend({ lat: dropoffLat, lng: dropoffLng });
-      hasPoints = true;
+      bounds.extend(new google.maps.LatLng(dropoffLat, dropoffLng));
+      hasValidPoints = true;
     }
 
-    // Draw simple line if both points exist (no Directions API needed)
-    if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
+    // Draw line between points
+    if (
+      pickupLat && pickupLng && dropoffLat && dropoffLng &&
+      !isNaN(pickupLat) && !isNaN(pickupLng) && !isNaN(dropoffLat) && !isNaN(dropoffLng)
+    ) {
       const path = [
-        { lat: pickupLat, lng: pickupLng },
-        { lat: dropoffLat, lng: dropoffLng }
+        new google.maps.LatLng(pickupLat, pickupLng),
+        new google.maps.LatLng(dropoffLat, dropoffLng)
       ];
       
       polylineRef.current = new google.maps.Polyline({
@@ -155,18 +140,21 @@ export default function MapPreview({
         strokeColor: '#1E5BBA',
         strokeOpacity: 0.8,
         strokeWeight: 3,
-        map: mapInstanceRef.current
+        map: map
       });
     }
 
-    // Fit bounds
-    if (hasPoints) {
-      mapInstanceRef.current.fitBounds(bounds);
-      // Add some padding
-      const zoom = mapInstanceRef.current.getZoom();
-      if (zoom && zoom > 15) {
-        mapInstanceRef.current.setZoom(15);
-      }
+    // Fit bounds if we have points
+    if (hasValidPoints) {
+      map.fitBounds(bounds);
+      
+      // Ensure reasonable zoom level
+      google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
+        const zoom = map.getZoom();
+        if (zoom && zoom > 15) {
+          map.setZoom(15);
+        }
+      });
     }
   }, [isLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
 

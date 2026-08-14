@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { loadGoogleMaps } from '@/lib/googleMaps';
 
 interface GoogleAddressInputProps {
   value: string;
@@ -8,24 +9,6 @@ interface GoogleAddressInputProps {
   placeholder?: string;
   label?: string;
   showCurrentLocation?: boolean;
-}
-
-// Load Google Maps script
-function loadGoogleMapsScript(apiKey: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof window.google !== 'undefined' && window.google.maps) {
-      resolve();
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = (error) => reject(error);
-    document.head.appendChild(script);
-  });
 }
 
 export default function GoogleAddressInput({
@@ -41,27 +24,21 @@ export default function GoogleAddressInput({
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      console.error('Google Maps API key is missing');
-      return;
-    }
-
-    loadGoogleMapsScript(apiKey)
+    loadGoogleMaps()
       .then(() => {
         setIsLoaded(true);
         
         if (inputRef.current && !autocompleteRef.current) {
           // Initialize autocomplete focused on Nigeria
           const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
-            componentRestrictions: { country: 'ng' }, // Restrict to Nigeria
+            componentRestrictions: { country: 'ng' },
             fields: ['formatted_address', 'geometry', 'name']
           });
 
           autocomplete.addListener('place_changed', () => {
             const place = autocomplete.getPlace();
             
-            if (place.geometry && place.geometry.location) {
+            if (place.geometry?.location) {
               const address = place.formatted_address || place.name || '';
               const lat = place.geometry.location.lat();
               const lng = place.geometry.location.lng();
@@ -97,24 +74,31 @@ export default function GoogleAddressInput({
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
 
-        // Reverse geocode to get address
-        if (window.google && window.google.maps) {
+        if (window.google?.maps) {
           const geocoder = new google.maps.Geocoder();
           geocoder.geocode({ location: { lat, lng } }, (results, status) => {
             setIsGettingLocation(false);
-            if (status === 'OK' && results && results[0]) {
+            if (status === 'OK' && results?.[0]) {
               const address = results[0].formatted_address;
               onChange(address, lat, lng);
               if (inputRef.current) {
                 inputRef.current.value = address;
               }
             } else {
-              onChange(`Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`, lat, lng);
+              const addr = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+              onChange(addr, lat, lng);
+              if (inputRef.current) {
+                inputRef.current.value = addr;
+              }
             }
           });
         } else {
           setIsGettingLocation(false);
-          onChange(`Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`, lat, lng);
+          const addr = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+          onChange(addr, lat, lng);
+          if (inputRef.current) {
+            inputRef.current.value = addr;
+          }
         }
       },
       (error) => {
@@ -135,13 +119,7 @@ export default function GoogleAddressInput({
         <input
           ref={inputRef}
           type="text"
-          value={value}
-          onChange={(e) => {
-            // Update value but don't trigger onChange until place is selected
-            if (inputRef.current) {
-              inputRef.current.value = e.target.value;
-            }
-          }}
+          defaultValue={value}
           placeholder={placeholder}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
           disabled={!isLoaded}
