@@ -218,6 +218,7 @@ export default function CreateOrder() {
                     }}
                     placeholder="Enter pickup address"
                     label="Pickup Address *"
+                    showCurrentLocation={true}
                   />
 
                   <div style={{ marginTop: '16px' }}>

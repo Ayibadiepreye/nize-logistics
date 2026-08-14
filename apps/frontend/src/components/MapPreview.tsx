@@ -19,7 +19,7 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
     }
 
     const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
@@ -38,7 +38,7 @@ export default function MapPreview({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Initialize map
@@ -68,15 +68,6 @@ export default function MapPreview({
               }
             ]
           });
-
-          directionsRendererRef.current = new google.maps.DirectionsRenderer({
-            map: mapInstanceRef.current,
-            suppressMarkers: false,
-            polylineOptions: {
-              strokeColor: '#1E5BBA',
-              strokeWeight: 4
-            }
-          });
         }
       })
       .catch(err => {
@@ -84,13 +75,19 @@ export default function MapPreview({
       });
   }, []);
 
-  // Update markers and route when coordinates change
+  // Update markers when coordinates change
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current) return;
 
     // Clear existing markers
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
+    
+    // Clear existing polyline
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
 
     const bounds = new google.maps.LatLngBounds();
     let hasPoints = false;
@@ -112,7 +109,8 @@ export default function MapPreview({
           fillOpacity: 1,
           strokeColor: 'white',
           strokeWeight: 2
-        }
+        },
+        title: 'Pickup Location'
       });
       markersRef.current.push(pickupMarker);
       bounds.extend({ lat: pickupLat, lng: pickupLng });
@@ -136,36 +134,39 @@ export default function MapPreview({
           fillOpacity: 1,
           strokeColor: 'white',
           strokeWeight: 2
-        }
+        },
+        title: 'Dropoff Location'
       });
       markersRef.current.push(dropoffMarker);
       bounds.extend({ lat: dropoffLat, lng: dropoffLng });
       hasPoints = true;
     }
 
-    // Draw route if both points exist
-    if (pickupLat && pickupLng && dropoffLat && dropoffLng && directionsRendererRef.current) {
-      const directionsService = new google.maps.DirectionsService();
+    // Draw simple line if both points exist (no Directions API needed)
+    if (pickupLat && pickupLng && dropoffLat && dropoffLng) {
+      const path = [
+        { lat: pickupLat, lng: pickupLng },
+        { lat: dropoffLat, lng: dropoffLng }
+      ];
       
-      directionsService.route(
-        {
-          origin: { lat: pickupLat, lng: pickupLng },
-          destination: { lat: dropoffLat, lng: dropoffLng },
-          travelMode: google.maps.TravelMode.DRIVING
-        },
-        (result, status) => {
-          if (status === 'OK' && result && directionsRendererRef.current) {
-            directionsRendererRef.current.setDirections(result);
-          }
-        }
-      );
-    } else if (directionsRendererRef.current) {
-      directionsRendererRef.current.setDirections({ routes: [] } as any);
+      polylineRef.current = new google.maps.Polyline({
+        path: path,
+        geodesic: true,
+        strokeColor: '#1E5BBA',
+        strokeOpacity: 0.8,
+        strokeWeight: 3,
+        map: mapInstanceRef.current
+      });
     }
 
     // Fit bounds
     if (hasPoints) {
       mapInstanceRef.current.fitBounds(bounds);
+      // Add some padding
+      const zoom = mapInstanceRef.current.getZoom();
+      if (zoom && zoom > 15) {
+        mapInstanceRef.current.setZoom(15);
+      }
     }
   }, [isLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
