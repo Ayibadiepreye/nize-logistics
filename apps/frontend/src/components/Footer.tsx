@@ -35,8 +35,11 @@ export default function Footer() {
               <a href="tel:2347063980120" className="footer-phone">
                 <i className="fas fa-phone"></i> +234 (0) 706 398 0120
               </a>
-              <a href="tel:2348076690182" className="footer-phone">
-                <i className="fas fa-phone"></i> +234 (0) 807 669 0182
+              <a href="tel:2348076690185" className="footer-phone">
+                <i className="fas fa-phone"></i> +234 (0) 807 669 0185
+              </a>
+              <a href="tel:2348039346596" className="footer-phone">
+                <i className="fas fa-phone"></i> +234 (0) 803 934 6596
               </a>
               <a 
                 href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I'd%20like%20to%20make%20an%20inquiry%20%2F%20book%20a%20delivery%20package." 

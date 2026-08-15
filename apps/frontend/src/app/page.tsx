@@ -89,9 +89,14 @@ export default function Home() {
                       <span className="phone-number">+234 (0) 706 398 0120</span>
                       <span className="phone-action">Call Now</span>
                     </a>
-                    <a href="tel:2348076690182" className="fleet-phone">
+                    <a href="tel:2348076690185" className="fleet-phone">
                       <span className="phone-icon"><i className="fas fa-phone"></i></span>
-                      <span className="phone-number">+234 (0) 807 669 0182</span>
+                      <span className="phone-number">+234 (0) 807 669 0185</span>
+                      <span className="phone-action">Call Now</span>
+                    </a>
+                    <a href="tel:2348039346596" className="fleet-phone">
+                      <span className="phone-icon"><i className="fas fa-phone"></i></span>
+                      <span className="phone-number">+234 (0) 803 934 6596</span>
                       <span className="phone-action">Call Now</span>
                     </a>
                   </div>

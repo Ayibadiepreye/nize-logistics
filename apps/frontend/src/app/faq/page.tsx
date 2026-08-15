@@ -31,7 +31,7 @@ export default function FAQPage() {
       questions: [
         {
           q: 'How do I book a delivery?',
-          a: 'You can book through our website, call our hotlines (+234 706 398 0120 or +234 807 669 0182), or message us on WhatsApp. Simply provide pickup and delivery addresses, package details, and your preferred pickup time.'
+          a: 'You can book through our website, call our hotlines (+234 706 398 0120, +234 807 669 0185 or +234 803 934 6596), or message us on WhatsApp. Simply provide pickup and delivery addresses, package details, and your preferred pickup time.'
         },
         {
           q: 'Can I schedule a pickup for later?',
