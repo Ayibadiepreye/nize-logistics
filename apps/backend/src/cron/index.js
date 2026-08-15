@@ -4,6 +4,40 @@ import { orders, users, platformSettings } from '../lib/db/schema.js';
 import { eq, and, lt, sql } from 'drizzle-orm';
 import { deleteFromCloudinary } from '../lib/cloudinary.js';
 
+/** Straight-line km between two points. */
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Closest rider to the pickup point. Riders with no known position sort last
+ * but remain eligible, so a pickup is never left unassigned just because a
+ * rider's phone has not reported in yet.
+ */
+function pickNearestRider(candidates, order) {
+  const pickupLat = parseFloat(order.pickupLat);
+  const pickupLng = parseFloat(order.pickupLng);
+
+  return candidates
+    .map((rider) => {
+      const known =
+        Number.isFinite(pickupLat) && Number.isFinite(pickupLng) && rider.currentLat && rider.currentLng;
+      return {
+        rider,
+        distance: known
+          ? distanceKm(pickupLat, pickupLng, parseFloat(rider.currentLat), parseFloat(rider.currentLng))
+          : Infinity,
+      };
+    })
+    .sort((a, b) => a.distance - b.distance)[0].rider;
+}
+
 export function startCronJobs(io) {
   console.log('⏰ Starting cron jobs...');
 
@@ -74,30 +108,37 @@ export function startCronJobs(io) {
       );
 
       for (const order of scheduledOrders) {
-        // Find available rider
-        const [rider] = await db.select().from(users).where(
+        // Pick the closest free rider rather than whichever row came back
+        // first — a scheduled pickup in Diobu should not go to a rider sitting
+        // in Oroazi when someone nearer is idle.
+        const candidates = await db.select().from(users).where(
           and(
             eq(users.role, 'rider'),
             eq(users.isOnline, true),
             eq(users.isBusy, false),
             eq(users.status, 'active')
           )
-        ).limit(1);
+        );
 
-        if (rider) {
-          await db.update(orders).set({
-            status: 'assigned',
-            assignedRiderId: rider.id,
-            assignedAt: new Date(),
-          }).where(eq(orders.id, order.id));
+        if (!candidates.length) continue;
 
-          await db.update(users).set({
-            isBusy: true,
-          }).where(eq(users.id, rider.id));
+        const rider = pickNearestRider(candidates, order);
 
-          // Notify rider via Socket.io
-          io.to(`user:${rider.id}`).emit('rider:new-job', { orderId: order.id });
-        }
+        await db.update(orders).set({
+          status: 'assigned',
+          assignedRiderId: rider.id,
+          assignedAt: new Date(),
+        }).where(eq(orders.id, order.id));
+
+        await db.update(users).set({
+          isBusy: true,
+        }).where(eq(users.id, rider.id));
+
+        // Notify rider via Socket.io
+        io.to(`user:${rider.id}`).emit('rider:new-job', { orderId: order.id, ticketId: order.ticketId });
+        io.emit('admin:order-update', { orderId: order.id, ticketId: order.ticketId, status: 'assigned' });
+
+        console.log(`📦 Auto-assigned ${order.ticketId} to ${rider.username}`);
       }
     } catch (error) {
       console.error('Scheduled pickup check error:', error);

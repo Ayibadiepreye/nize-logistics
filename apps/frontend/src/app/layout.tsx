@@ -1,45 +1,40 @@
-import type { Metadata } from "next";
-import Script from "next/script";
-import "./globals.css";
+import type { Metadata, Viewport } from 'next';
+import './globals.css';
+import { ThemeProvider, themeInitScript } from '@/components/ThemeProvider';
+import { ToastProvider } from '@/components/ui';
 
 export const metadata: Metadata = {
-  title: "Nize Logistics - ...Plenty Waka",
-  description: "Fast, reliable delivery service across Nigeria",
-  manifest: "/manifest.json",
+  title: 'Nize Logistics — ...Plenty Waka',
+  description:
+    'Fast pick-up and fast delivery across Port Harcourt and beyond. Book a dispatch rider, track your package live, and pay on delivery or online.',
+  manifest: '/manifest.json',
   icons: {
-    icon: "/logo.svg",
-    apple: "/logo.svg",
+    icon: '/logo.svg',
+    apple: '/logo.svg',
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Both themes ship a matching browser-chrome colour.
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0b1017' },
+  ],
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <link
-          rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
-        />
+        {/* Applies the stored theme before first paint to avoid a flash of the wrong theme. */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="dark-theme" suppressHydrationWarning>
-        <Script id="theme-init" strategy="beforeInteractive">
-          {`
-            const savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'light') {
-              document.body.classList.remove('dark-theme');
-            } else {
-              document.body.classList.add('dark-theme');
-              if (!savedTheme) {
-                localStorage.setItem('theme', 'dark');
-              }
-            }
-          `}
-        </Script>
-        {children}
+      <body suppressHydrationWarning>
+        <ThemeProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

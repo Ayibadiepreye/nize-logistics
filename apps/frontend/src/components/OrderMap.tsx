@@ -89,7 +89,7 @@ export default function OrderMap({
 
   if (!isClient) {
     return (
-      <div style={{ height: '100%', width: '100%', borderRadius: '16px', overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ height: '100%', width: '100%', borderRadius: '16px', overflow: 'hidden', background: 'var(--bg-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <p style={{ color: 'var(--text-secondary)' }}>Loading map...</p>
       </div>
     );

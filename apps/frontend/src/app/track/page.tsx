@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
+import Icon from '@/components/Icon';
 
 export default function TrackPage() {
   const router = useRouter();
@@ -22,7 +23,7 @@ export default function TrackPage() {
       <Navbar />
       
       <main className="min-h-screen flex flex-col">
-        <section className="flex-1 py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
+        <section className="flex-1 py-8 px-4" style={{ background: 'var(--bg-subtle)' }}>
           <div className="container">
             <div className="max-w-md mx-auto">
               <div className="card">
@@ -30,17 +31,17 @@ export default function TrackPage() {
                   <div style={{ 
                     width: '80px', 
                     height: '80px',
-                    background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                    background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                     borderRadius: '20px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     margin: '0 auto 24px',
-                    boxShadow: 'var(--shadow-glow)',
+                    boxShadow: 'var(--shadow-md)',
                     fontSize: '36px',
                     color: 'white'
                   }}>
-                    <i className="fas fa-search-location"></i>
+                    <Icon name="search-location" />
                   </div>
                   <h1 className="text-3xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Track Your Package</h1>
                   <p style={{ color: 'var(--text-secondary)' }}>Enter your tracking ID to see real-time updates</p>
@@ -66,7 +67,7 @@ export default function TrackPage() {
                   </div>
 
                   <button type="submit" className="btn btn-primary btn-lg" style={{ width: '100%' }}>
-                    <i className="fas fa-location-arrow"></i> Track Package
+                    <Icon name="location-arrow" /> Track Package
                   </button>
                 </form>
               </div>

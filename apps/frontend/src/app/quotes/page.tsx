@@ -5,6 +5,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
 import { useRouter } from 'next/navigation';
+import Icon from '@/components/Icon';
 
 export default function QuotesPage() {
   const router = useRouter();
@@ -40,23 +41,23 @@ export default function QuotesPage() {
       
       <main className="min-h-screen flex flex-col">
         {/* Hero Section */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-hero)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--brand)' }}>
           <div className="container" style={{ maxWidth: '1280px' }}>
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <div style={{ 
                 width: '100px', 
                 height: '100px',
-                background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                 borderRadius: '24px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 32px',
-                boxShadow: 'var(--shadow-glow)',
+                boxShadow: 'var(--shadow-md)',
                 fontSize: '48px',
                 color: 'white'
               }}>
-                <i className="fas fa-calculator"></i>
+                <Icon name="calculator" />
               </div>
               <h1 style={{ fontSize: '48px', fontWeight: 800, marginBottom: '24px', color: 'white' }}>
                 Get an Instant Quote
@@ -69,7 +70,7 @@ export default function QuotesPage() {
         </section>
 
         {/* Calculator */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--bg-subtle)' }}>
           <div className="container" style={{ maxWidth: '700px' }}>
             <div className="card">
               <h2 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
@@ -91,8 +92,8 @@ export default function QuotesPage() {
                   style={{ fontSize: '18px' }}
                 />
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                  <i className="fas fa-info-circle"></i> Don't know the distance? Use our{' '}
-                  <a href="/order" style={{ color: 'var(--primary)', fontWeight: 600 }}>order form</a> with address autocomplete
+                  <Icon name="info-circle" /> Don't know the distance? Use our{' '}
+                  <a href="/order" style={{ color: 'var(--brand)', fontWeight: 600 }}>order form</a> with address autocomplete
                 </p>
               </div>
 
@@ -101,14 +102,14 @@ export default function QuotesPage() {
                 className="btn btn-primary btn-lg"
                 style={{ width: '100%' }}
               >
-                <i className="fas fa-calculator"></i> Calculate Price
+                <Icon name="calculator" /> Calculate Price
               </button>
 
               {quote && (
                 <div style={{ 
                   marginTop: '32px',
                   padding: '24px',
-                  background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                  background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                   borderRadius: '16px',
                   color: 'white'
                 }}>
@@ -149,7 +150,7 @@ export default function QuotesPage() {
                       marginTop: '20px',
                       padding: '14px',
                       background: 'white',
-                      color: 'var(--primary)',
+                      color: 'var(--brand)',
                       border: 'none',
                       borderRadius: '12px',
                       fontSize: '16px',
@@ -160,7 +161,7 @@ export default function QuotesPage() {
                     onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
                     onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                   >
-                    <i className="fas fa-rocket"></i> Book This Delivery
+                    <Icon name="rocket" /> Book This Delivery
                   </button>
                 </div>
               )}
@@ -179,7 +180,7 @@ export default function QuotesPage() {
                 <div style={{ 
                   width: '56px',
                   height: '56px',
-                  background: 'var(--primary)',
+                  background: 'var(--brand)',
                   borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
@@ -188,7 +189,7 @@ export default function QuotesPage() {
                   fontSize: '24px',
                   marginBottom: '16px'
                 }}>
-                  <i className="fas fa-hand-holding-dollar"></i>
+                  <Icon name="hand-holding-dollar" />
                 </div>
                 <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                   Base Fare
@@ -202,7 +203,7 @@ export default function QuotesPage() {
                 <div style={{ 
                   width: '56px',
                   height: '56px',
-                  background: 'var(--secondary)',
+                  background: 'var(--brand-hover)',
                   borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
@@ -211,7 +212,7 @@ export default function QuotesPage() {
                   fontSize: '24px',
                   marginBottom: '16px'
                 }}>
-                  <i className="fas fa-road"></i>
+                  <Icon name="road" />
                 </div>
                 <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                   Per Kilometer
@@ -234,7 +235,7 @@ export default function QuotesPage() {
                   fontSize: '24px',
                   marginBottom: '16px'
                 }}>
-                  <i className="fas fa-check-circle"></i>
+                  <Icon name="check-circle" />
                 </div>
                 <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                   Minimum Fare
@@ -245,9 +246,9 @@ export default function QuotesPage() {
               </div>
             </div>
 
-            <div className="card" style={{ marginTop: '32px', padding: '24px', background: 'var(--bg-hero-overlay)' }}>
+            <div className="card" style={{ marginTop: '32px', padding: '24px', background: 'var(--brand-subtle)' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>
-                <i className="fas fa-info-circle" style={{ color: 'var(--primary)' }}></i> Good to Know
+                <Icon name="info-circle" style={{ color: 'var(--brand)' }} /> Good to Know
               </h3>
               <ul style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: '1.8', paddingLeft: '20px' }}>
                 <li>No hidden charges - the price you see is what you pay</li>

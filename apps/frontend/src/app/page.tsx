@@ -5,22 +5,32 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
 import Link from 'next/link';
+import Icon from '@/components/Icon';
 
 export default function Home() {
   const [trackInput, setTrackInput] = useState('');
+  const [trackError, setTrackError] = useState('');
 
+  /**
+   * Tickets are issued as NIZ-XXXXXX. The old check demanded "NZ-8402" and
+   * rejected every real ticket the platform has ever produced; it also used a
+   * blocking alert(). Accept the ticket with or without the prefix.
+   */
   const handleTrack = () => {
-    const orderId = trackInput.trim();
-    if (!orderId) {
-      alert('Please enter an Order ID');
+    const raw = trackInput.trim().toUpperCase();
+    if (!raw) {
+      setTrackError('Enter the ticket number from your booking confirmation');
       return;
     }
-    const orderIdPattern = /^NZ-\d{4}$/i;
-    if (!orderIdPattern.test(orderId)) {
-      alert('Invalid Order ID format. Use format: NZ-8402');
+
+    const ticketId = raw.startsWith('NIZ-') ? raw : `NIZ-${raw.replace(/^NIZ-?/, '')}`;
+    if (!/^NIZ-[A-Z0-9]{4,10}$/.test(ticketId)) {
+      setTrackError('That does not look like a Nize ticket number (example: NIZ-8K2P4Q)');
       return;
     }
-    window.location.href = `/track/${orderId}`;
+
+    setTrackError('');
+    window.location.href = `/track/${ticketId}`;
   };
 
   return (
@@ -44,7 +54,7 @@ export default function Home() {
                 </p>
                 <div className="hero-buttons">
                   <Link href="/order" className="btn btn-primary btn-lg">
-                    <i className="fas fa-rocket"></i> Book Delivery
+                    <Icon name="rocket" /> Book Delivery
                   </Link>
                   <a 
                     href="https://wa.me/2347063980120?text=Hi%20Nize%20Logistics!%20I%20want%20to%20request%20a%20fast%20pickup." 
@@ -52,23 +62,34 @@ export default function Home() {
                     target="_blank" 
                     rel="noopener noreferrer"
                   >
-                    <i className="fab fa-whatsapp"></i> Quick Contact
+                    <Icon name="whatsapp" /> Quick Contact
                   </a>
                 </div>
                 
                 {/* Quick Track */}
                 <div className="quick-track">
                   <div className="track-input-wrapper">
-                    <input 
-                      type="text" 
-                      className="track-input" 
-                      placeholder="Enter Order ID (e.g. NZ-8402)..."
+                    <input
+                      type="text"
+                      className="track-input"
+                      placeholder="Track a ticket (e.g. NIZ-8K2P4Q)"
+                      aria-label="Ticket number"
                       value={trackInput}
-                      onChange={(e) => setTrackInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleTrack()}
+                      onChange={(e) => {
+                        setTrackInput(e.target.value);
+                        if (trackError) setTrackError('');
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && handleTrack()}
                     />
-                    <button className="btn btn-primary" onClick={handleTrack}>Track</button>
+                    <button className="btn btn-primary" onClick={handleTrack}>
+                      Track
+                    </button>
                   </div>
+                  {trackError && (
+                    <p className="mt-2 text-[13px]" style={{ color: '#ffd9e2' }} role="alert">
+                      {trackError}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -76,7 +97,7 @@ export default function Home() {
               <div className="hero-right">
                 <div className="fleet-card">
                   <div className="fleet-icon">
-                    <i className="fas fa-motorcycle"></i>
+                    <Icon name="motorcycle" />
                   </div>
                   <div className="fleet-header">
                     <h3>Active Fleet Dispatch</h3>
@@ -85,17 +106,17 @@ export default function Home() {
                   <div className="fleet-contact">
                     <p className="fleet-label">Direct Flyer Order Lines:</p>
                     <a href="tel:2347063980120" className="fleet-phone">
-                      <span className="phone-icon"><i className="fas fa-phone"></i></span>
+                      <span className="phone-icon"><Icon name="phone" /></span>
                       <span className="phone-number">+234 (0) 706 398 0120</span>
                       <span className="phone-action">Call Now</span>
                     </a>
                     <a href="tel:2348076690185" className="fleet-phone">
-                      <span className="phone-icon"><i className="fas fa-phone"></i></span>
+                      <span className="phone-icon"><Icon name="phone" /></span>
                       <span className="phone-number">+234 (0) 807 669 0185</span>
                       <span className="phone-action">Call Now</span>
                     </a>
                     <a href="tel:2348039346596" className="fleet-phone">
-                      <span className="phone-icon"><i className="fas fa-phone"></i></span>
+                      <span className="phone-icon"><Icon name="phone" /></span>
                       <span className="phone-number">+234 (0) 803 934 6596</span>
                       <span className="phone-action">Call Now</span>
                     </a>
@@ -119,28 +140,28 @@ export default function Home() {
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-icon">
-                  <i className="fas fa-clock"></i>
+                  <Icon name="clock" />
                 </div>
                 <h3 className="stat-number">15-30 Mins</h3>
                 <p className="stat-label">Fast Express Pickup</p>
               </div>
               <div className="stat-card">
                 <div className="stat-icon">
-                  <i className="fas fa-motorcycle"></i>
+                  <Icon name="motorcycle" />
                 </div>
                 <h3 className="stat-number">100% Verified</h3>
                 <p className="stat-label">Trusted Dispatch Riders</p>
               </div>
               <div className="stat-card">
                 <div className="stat-icon">
-                  <i className="fas fa-box-open"></i>
+                  <Icon name="box-open" />
                 </div>
                 <h3 className="stat-number">10,000+</h3>
                 <p className="stat-label">Successful Deliveries</p>
               </div>
               <div className="stat-card">
                 <div className="stat-icon">
-                  <i className="fas fa-hand-holding-dollar"></i>
+                  <Icon name="hand-holding-dollar" />
                 </div>
                 <h3 className="stat-number">Fair Pricing</h3>
                 <p className="stat-label">No Hidden Charges</p>
@@ -164,7 +185,7 @@ export default function Home() {
               {/* Service 1 */}
               <div className="service-card">
                 <div className="service-icon">
-                  <i className="fas fa-bolt"></i>
+                  <Icon name="bolt" />
                 </div>
                 <h3 className="service-title">Same-Day Express Delivery</h3>
                 <p className="service-description">
@@ -175,7 +196,7 @@ export default function Home() {
               {/* Service 2 */}
               <div className="service-card">
                 <div className="service-icon service-icon-red">
-                  <i className="fas fa-file-alt"></i>
+                  <Icon name="file-alt" />
                 </div>
                 <h3 className="service-title">Document & Parcel Dispatch</h3>
                 <p className="service-description">
@@ -186,7 +207,7 @@ export default function Home() {
               {/* Service 3 */}
               <div className="service-card">
                 <div className="service-icon service-icon-green">
-                  <i className="fas fa-shopping-bag"></i>
+                  <Icon name="shopping-bag" />
                 </div>
                 <h3 className="service-title">E-Commerce & Merchant Logistics</h3>
                 <p className="service-description">
@@ -208,10 +229,10 @@ export default function Home() {
               </div>
               <div className="cta-right">
                 <a href="tel:+2347063980120" className="btn btn-outline-light btn-lg">
-                  <i className="fas fa-phone"></i> 0706 398 0120
+                  <Icon name="phone" /> 0706 398 0120
                 </a>
                 <Link href="/order" className="btn btn-danger btn-lg">
-                  <i className="fas fa-calendar-check"></i> Book Online
+                  <Icon name="calendar-check" /> Book Online
                 </Link>
               </div>
             </div>

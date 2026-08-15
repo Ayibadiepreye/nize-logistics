@@ -1,6 +1,7 @@
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
+import Icon from '@/components/Icon';
 
 export default function AboutPage() {
   return (
@@ -9,23 +10,23 @@ export default function AboutPage() {
       
       <main className="min-h-screen flex flex-col">
         {/* Hero Section */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-hero)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--brand)' }}>
           <div className="container" style={{ maxWidth: '1280px' }}>
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <div style={{ 
                 width: '100px', 
                 height: '100px',
-                background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                 borderRadius: '24px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 32px',
-                boxShadow: 'var(--shadow-glow)',
+                boxShadow: 'var(--shadow-md)',
                 fontSize: '48px',
                 color: 'white'
               }}>
-                <i className="fas fa-truck-fast"></i>
+                <Icon name="truck-fast" />
               </div>
               <h1 style={{ fontSize: '48px', fontWeight: 800, marginBottom: '24px', color: 'white' }}>
                 About Nize Logistics
@@ -38,7 +39,7 @@ export default function AboutPage() {
         </section>
 
         {/* Our Story */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--bg-subtle)' }}>
           <div className="container" style={{ maxWidth: '900px' }}>
             <div className="card">
               <h2 style={{ fontSize: '32px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
@@ -74,7 +75,7 @@ export default function AboutPage() {
                 <div style={{ 
                   width: '60px', 
                   height: '60px',
-                  background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                  background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                   borderRadius: '16px',
                   display: 'flex',
                   alignItems: 'center',
@@ -83,7 +84,7 @@ export default function AboutPage() {
                   fontSize: '28px',
                   color: 'white'
                 }}>
-                  <i className="fas fa-bullseye"></i>
+                  <Icon name="bullseye" />
                 </div>
                 <h3 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>
                   Our Mission
@@ -99,7 +100,7 @@ export default function AboutPage() {
                 <div style={{ 
                   width: '60px', 
                   height: '60px',
-                  background: 'linear-gradient(135deg, var(--accent), var(--primary))',
+                  background: 'linear-gradient(135deg, var(--accent), var(--brand))',
                   borderRadius: '16px',
                   display: 'flex',
                   alignItems: 'center',
@@ -108,7 +109,7 @@ export default function AboutPage() {
                   fontSize: '28px',
                   color: 'white'
                 }}>
-                  <i className="fas fa-eye"></i>
+                  <Icon name="eye" />
                 </div>
                 <h3 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>
                   Our Vision
@@ -123,7 +124,7 @@ export default function AboutPage() {
                 <div style={{ 
                   width: '60px', 
                   height: '60px',
-                  background: 'linear-gradient(135deg, var(--success), var(--secondary))',
+                  background: 'linear-gradient(135deg, var(--success), var(--brand-hover))',
                   borderRadius: '16px',
                   display: 'flex',
                   alignItems: 'center',
@@ -132,7 +133,7 @@ export default function AboutPage() {
                   fontSize: '28px',
                   color: 'white'
                 }}>
-                  <i className="fas fa-heart"></i>
+                  <Icon name="heart" />
                 </div>
                 <h3 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: 'var(--text-primary)' }}>
                   Our Values
@@ -147,7 +148,7 @@ export default function AboutPage() {
         </section>
 
         {/* Why Choose Us */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--bg-subtle)' }}>
           <div className="container" style={{ maxWidth: '900px' }}>
             <h2 style={{ fontSize: '32px', fontWeight: 700, marginBottom: '32px', textAlign: 'center', color: 'var(--text-primary)' }}>
               Why Choose Nize Logistics?
@@ -165,14 +166,14 @@ export default function AboutPage() {
                   display: 'flex', 
                   gap: '20px', 
                   padding: '20px',
-                  background: 'var(--bg-card)',
-                  border: '1px solid var(--border-color)',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
                   borderRadius: '16px'
                 }}>
                   <div style={{ 
                     width: '48px',
                     height: '48px',
-                    background: 'var(--primary)',
+                    background: 'var(--brand)',
                     borderRadius: '12px',
                     display: 'flex',
                     alignItems: 'center',
@@ -209,10 +210,10 @@ export default function AboutPage() {
               </p>
               <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <a href="/order" className="btn btn-primary btn-lg">
-                  <i className="fas fa-rocket"></i> Book a Delivery
+                  <Icon name="rocket" /> Book a Delivery
                 </a>
                 <a href="tel:+2347063980120" className="btn btn-success btn-lg">
-                  <i className="fas fa-phone"></i> Call Us Now
+                  <Icon name="phone" /> Call Us Now
                 </a>
               </div>
             </div>

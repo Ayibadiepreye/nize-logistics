@@ -6,46 +6,95 @@ import { eq } from 'drizzle-orm';
 
 const router = express.Router();
 
-// Paystack webhook
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
+/**
+ * Paystack webhook.
+ *
+ * Signature verification MUST run against the exact bytes Paystack sent. The
+ * previous implementation hashed `JSON.stringify(req.body)` after the global
+ * express.json() middleware had already parsed the payload, so the computed
+ * HMAC was over a re-serialised object and never matched — every webhook was
+ * rejected with 401 and no card payment was ever confirmed.
+ *
+ * server.js mounts this router with express.raw() BEFORE express.json(), so
+ * req.body here is the untouched Buffer.
+ */
+router.post('/webhook', async (req, res) => {
   try {
-    const hash = crypto
-      .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
-      .update(JSON.stringify(req.body))
-      .digest('hex');
-
-    if (hash !== req.headers['x-paystack-signature']) {
-      return res.status(401).json({ error: 'Invalid signature' });
+    const secret = process.env.PAYSTACK_SECRET_KEY;
+    if (!secret) {
+      console.error('[paystack] webhook received but PAYSTACK_SECRET_KEY is not configured');
+      return res.status(500).send('Not configured');
     }
 
-    const event = req.body;
+    const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+    const signature = req.headers['x-paystack-signature'];
 
-    if (event.event === 'charge.success') {
-      const reference = event.data.reference;
+    const expected = crypto.createHmac('sha512', secret).update(rawBody).digest('hex');
 
-      // Find order by reference
-      const [order] = await db.select().from(orders)
-        .where(eq(orders.paymentReference, reference));
+    // Constant-time compare; timingSafeEqual throws on a length mismatch.
+    const provided = Buffer.from(String(signature ?? ''), 'utf8');
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    const valid =
+      provided.length === expectedBuf.length && crypto.timingSafeEqual(provided, expectedBuf);
 
-      if (order) {
-        await db.update(orders).set({
-          paymentStatus: 'paid',
-        }).where(eq(orders.id, order.id));
-
-        console.log(`✅ Payment confirmed for order ${order.ticketId}`);
-
-        // Emit to order room
-        req.app.get('io')?.to(`order:${order.id}`).emit('payment:confirmed', {
-          orderId: order.id,
-          ticketId: order.ticketId,
-        });
-      }
+    if (!valid) {
+      console.warn('[paystack] rejected webhook with an invalid signature');
+      return res.status(401).send('Invalid signature');
     }
 
+    let event;
+    try {
+      event = JSON.parse(rawBody.toString('utf8'));
+    } catch {
+      return res.status(400).send('Malformed payload');
+    }
+
+    // Acknowledge immediately — Paystack retries on anything slow or non-2xx,
+    // and the work below must not hold the response open.
     res.status(200).send('OK');
+
+    if (event?.event !== 'charge.success') return;
+
+    const reference = event.data?.reference;
+    if (!reference) return;
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.paymentReference, reference))
+      .limit(1);
+
+    if (!order) {
+      console.warn(`[paystack] no order matches reference ${reference}`);
+      return;
+    }
+
+    if (order.paymentStatus === 'paid') return; // Duplicate delivery — ignore.
+
+    // Guard against an underpayment being marked as settled.
+    const paidKobo = Number(event.data?.amount ?? 0);
+    const expectedKobo = Math.round(parseFloat(order.totalPrice) * 100);
+    if (paidKobo < expectedKobo) {
+      console.warn(
+        `[paystack] underpayment on ${order.ticketId}: got ${paidKobo}, expected ${expectedKobo}`
+      );
+      return;
+    }
+
+    await db
+      .update(orders)
+      .set({ paymentStatus: 'paid', updatedAt: new Date() })
+      .where(eq(orders.id, order.id));
+
+    console.log(`[paystack] payment confirmed for ${order.ticketId}`);
+
+    req.app.get('io')?.to(`order:${order.id}`).emit('payment:confirmed', {
+      orderId: order.id,
+      ticketId: order.ticketId,
+    });
   } catch (error) {
-    console.error('Webhook error:', error);
-    res.status(500).send('Error');
+    console.error('[paystack] webhook handler error:', error);
+    if (!res.headersSent) res.status(500).send('Error');
   }
 });
 

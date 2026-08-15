@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
+import Icon from '@/components/Icon';
 
 export default function FAQPage() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
@@ -129,23 +130,23 @@ export default function FAQPage() {
       
       <main className="min-h-screen flex flex-col">
         {/* Hero Section */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-hero)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--brand)' }}>
           <div className="container" style={{ maxWidth: '1280px' }}>
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <div style={{ 
                 width: '100px', 
                 height: '100px',
-                background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                 borderRadius: '24px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 32px',
-                boxShadow: 'var(--shadow-glow)',
+                boxShadow: 'var(--shadow-md)',
                 fontSize: '48px',
                 color: 'white'
               }}>
-                <i className="fas fa-question-circle"></i>
+                <Icon name="question-circle" />
               </div>
               <h1 style={{ fontSize: '48px', fontWeight: 800, marginBottom: '24px', color: 'white' }}>
                 Frequently Asked Questions
@@ -158,7 +159,7 @@ export default function FAQPage() {
         </section>
 
         {/* FAQs */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--bg-subtle)' }}>
           <div className="container" style={{ maxWidth: '900px' }}>
             {faqs.map((category, catIdx) => (
               <div key={catIdx} style={{ marginBottom: '48px' }}>
@@ -166,12 +167,12 @@ export default function FAQPage() {
                   fontSize: '28px', 
                   fontWeight: 700, 
                   marginBottom: '24px', 
-                  color: 'var(--primary)',
+                  color: 'var(--brand)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px'
                 }}>
-                  <i className="fas fa-folder"></i>
+                  <Icon name="folder" />
                   {category.category}
                 </h2>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -182,8 +183,8 @@ export default function FAQPage() {
                       <div 
                         key={qIdx} 
                         style={{
-                          background: 'var(--bg-card)',
-                          border: '1px solid var(--border-color)',
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-subtle)',
                           borderRadius: '16px',
                           overflow: 'hidden',
                           transition: 'all 0.3s ease'
@@ -207,13 +208,15 @@ export default function FAQPage() {
                           }}
                         >
                           <span>{faq.q}</span>
-                          <i 
-                            className={`fas fa-chevron-${isOpen ? 'up' : 'down'}`}
-                            style={{ 
-                              color: 'var(--primary)',
-                              transition: 'transform 0.3s ease'
+                          <Icon
+                            name="chevron-down"
+                            style={{
+                              color: 'var(--brand)',
+                              transition: 'transform 0.2s ease',
+                              transform: isOpen ? 'rotate(180deg)' : 'none',
+                              flexShrink: 0,
                             }}
-                          ></i>
+                          />
                         </button>
                         {isOpen && (
                           <div style={{
@@ -247,7 +250,7 @@ export default function FAQPage() {
               </p>
               <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <a href="tel:+2347063980120" className="btn btn-primary">
-                  <i className="fas fa-phone"></i> Call Us
+                  <Icon name="phone" /> Call Us
                 </a>
                 <a 
                   href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I%20have%20a%20question." 
@@ -255,7 +258,7 @@ export default function FAQPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <i className="fab fa-whatsapp"></i> WhatsApp
+                  <Icon name="whatsapp" /> WhatsApp
                 </a>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Icon from '@/components/Icon';
 
 export default function Footer() {
   return (
@@ -9,7 +10,7 @@ export default function Footer() {
           <div className="footer-column">
             <div className="footer-logo">
               <div className="logo-icon">
-                <i className="fas fa-truck-fast"></i>
+                <Icon name="truck-fast" />
               </div>
               <div className="logo-text">
                 <div className="logo-main">
@@ -33,13 +34,13 @@ export default function Footer() {
             <h4 className="footer-title">Flyer Hotlines</h4>
             <div className="footer-links">
               <a href="tel:2347063980120" className="footer-phone">
-                <i className="fas fa-phone"></i> +234 (0) 706 398 0120
+                <Icon name="phone" /> +234 (0) 706 398 0120
               </a>
               <a href="tel:2348076690185" className="footer-phone">
-                <i className="fas fa-phone"></i> +234 (0) 807 669 0185
+                <Icon name="phone" /> +234 (0) 807 669 0185
               </a>
               <a href="tel:2348039346596" className="footer-phone">
-                <i className="fas fa-phone"></i> +234 (0) 803 934 6596
+                <Icon name="phone" /> +234 (0) 803 934 6596
               </a>
               <a 
                 href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I'd%20like%20to%20make%20an%20inquiry%20%2F%20book%20a%20delivery%20package." 
@@ -47,7 +48,7 @@ export default function Footer() {
                 target="_blank" 
                 rel="noopener noreferrer"
               >
-                <i className="fab fa-whatsapp"></i> WhatsApp Dispatch Line
+                <Icon name="whatsapp" /> WhatsApp Dispatch Line
               </a>
             </div>
           </div>
@@ -85,8 +86,8 @@ export default function Footer() {
         <div className="footer-bottom">
           <p className="copyright">© 2026 Nize Logistics ("...Plenty Waka"). All rights reserved.</p>
           <div className="footer-meta">
-            <span><i className="fas fa-clock"></i> Mon - Sat: 7:00 AM - 7:00 PM</span>
-            <span><i className="fas fa-check-circle"></i> Verified Dispatch Fleet</span>
+            <span><Icon name="clock" /> Mon - Sat: 7:00 AM - 7:00 PM</span>
+            <span><Icon name="check-circle" /> Verified Dispatch Fleet</span>
           </div>
         </div>
       </div>

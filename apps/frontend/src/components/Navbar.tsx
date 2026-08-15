@@ -1,51 +1,50 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { LayoutDashboard, LogOut, Menu, Monitor, Moon, Sun, X } from 'lucide-react';
+import { useTheme } from '@/components/ThemeProvider';
+import { clearSession, homeForRole, useAuth } from '@/lib/auth';
+import Icon from '@/components/Icon';
+
+const PUBLIC_LINKS = [
+  { href: '/', label: 'Home' },
+  { href: '/order', label: 'Book Delivery' },
+  { href: '/track', label: 'Track Order' },
+  { href: '/quotes', label: 'Quotes' },
+  { href: '/about', label: 'About' },
+  { href: '/faq', label: 'FAQ' },
+];
 
 export default function Navbar() {
-  const [isDark, setIsDark] = useState(true); // Default to dark mode
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const { theme, cycleTheme } = useTheme();
+  const { user } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
 
+  // Close the mobile menu whenever the route changes.
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-      setIsDark(false);
-      document.body.classList.remove('dark-theme');
-    } else {
-      // Default to dark if no saved theme or saved as dark
-      setIsDark(true);
-      document.body.classList.add('dark-theme');
-      if (!savedTheme) {
-        localStorage.setItem('theme', 'dark');
-      }
-    }
-  }, []);
+    setMenuOpen(false);
+  }, [pathname]);
 
-  const toggleTheme = () => {
-    const newTheme = !isDark;
-    setIsDark(newTheme);
-    if (newTheme) {
-      document.body.classList.add('dark-theme');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.body.classList.remove('dark-theme');
-      localStorage.setItem('theme', 'light');
-    }
+  const logout = () => {
+    clearSession();
+    router.push('/login');
   };
 
-  const toggleMobileMenu = () => {
-    setIsMobileMenuOpen(!isMobileMenuOpen);
-  };
+  const ThemeIcon = theme === 'dark' ? Moon : theme === 'light' ? Sun : Monitor;
+  const themeLabel =
+    theme === 'dark' ? 'Dark theme' : theme === 'light' ? 'Light theme' : 'System theme';
 
   return (
-    <header className="header" id="header">
+    <header className="header">
       <div className="container">
         <div className="header-content">
-          {/* Logo */}
-          <Link href="/" className="logo">
+          <Link href="/" className="logo" aria-label="Nize Logistics home">
             <div className="logo-icon">
-              <i className="fas fa-truck-fast"></i>
+              <Icon name="truck-fast" />
             </div>
             <div className="logo-text">
               <div className="logo-main">
@@ -56,37 +55,80 @@ export default function Navbar() {
             </div>
           </Link>
 
-          {/* Navigation Menu */}
-          <nav className={`nav ${isMobileMenuOpen ? 'active' : ''}`} id="nav">
-            <Link href="/" className="nav-link active">Home</Link>
-            <Link href="/order" className="nav-link">Book Delivery</Link>
-            <Link href="/track" className="nav-link">Track Order</Link>
-            <Link href="/quotes" className="nav-link">Quotes</Link>
-            <Link href="/#services" className="nav-link">Services</Link>
-            <Link href="/about" className="nav-link">About</Link>
-            <Link href="/#contact" className="nav-link">Contact</Link>
+          <nav className={`nav ${menuOpen ? 'active' : ''}`} aria-label="Main navigation">
+            {PUBLIC_LINKS.map((link) => {
+              const active = link.href === '/' ? pathname === '/' : pathname.startsWith(link.href);
+              return (
+                <Link key={link.href} href={link.href} className={`nav-link ${active ? 'active' : ''}`}>
+                  {link.label}
+                </Link>
+              );
+            })}
+
+            {/* Signed-in shortcuts live in the mobile sheet too, where the
+                header has no room for them. */}
+            {user && (
+              <>
+                <Link href={homeForRole(user.role)} className="nav-link nav-mobile-only">
+                  My Dashboard
+                </Link>
+                <button type="button" className="nav-link nav-mobile-only text-left" onClick={logout}>
+                  Sign out
+                </button>
+              </>
+            )}
           </nav>
 
-          {/* Header Actions */}
           <div className="header-actions">
-            <button className="theme-toggle" id="themeToggle" onClick={toggleTheme}>
-              <i className={isDark ? 'fas fa-sun' : 'fas fa-moon'}></i>
+            <button
+              className="theme-toggle"
+              onClick={cycleTheme}
+              title={`${themeLabel} — click to change`}
+              aria-label={`${themeLabel}. Change theme`}
+              type="button"
+            >
+              <ThemeIcon size={16} />
             </button>
-            <a 
-              href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I'd%20like%20to%20make%20an%20inquiry%20%2F%20book%20a%20delivery%20package." 
-              className="whatsapp-icon" 
-              target="_blank" 
+
+            <a
+              href="https://wa.me/2347063980120?text=Hello%20Nize%20Logistics!%20I'd%20like%20to%20make%20an%20inquiry%20%2F%20book%20a%20delivery%20package."
+              className="whatsapp-icon nav-desktop-only"
+              target="_blank"
               rel="noopener noreferrer"
+              aria-label="Chat with us on WhatsApp"
             >
-              <i className="fab fa-whatsapp"></i>
+              <Icon name="whatsapp" />
             </a>
-            <Link href="/order" className="btn btn-primary btn-sm">Book Now</Link>
-            <button 
-              className="mobile-menu-toggle" 
-              id="mobileMenuToggle"
-              onClick={toggleMobileMenu}
+
+            {user ? (
+              <div className="nav-desktop-only flex items-center gap-2">
+                <Link href={homeForRole(user.role)} className="btn btn-outline btn-sm">
+                  <LayoutDashboard size={14} />
+                  Dashboard
+                </Link>
+                <button className="icon-btn" onClick={logout} title="Sign out" type="button" aria-label="Sign out">
+                  <LogOut size={15} />
+                </button>
+              </div>
+            ) : (
+              <div className="nav-desktop-only flex items-center gap-2">
+                <Link href="/login" className="btn btn-ghost btn-sm">
+                  Sign in
+                </Link>
+                <Link href="/order" className="btn btn-primary btn-sm">
+                  Book Now
+                </Link>
+              </div>
+            )}
+
+            <button
+              className="mobile-menu-toggle"
+              onClick={() => setMenuOpen((v) => !v)}
+              aria-expanded={menuOpen}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              type="button"
             >
-              <i className={isMobileMenuOpen ? 'fas fa-times' : 'fas fa-bars'}></i>
+              {menuOpen ? <X size={17} /> : <Menu size={17} />}
             </button>
           </div>
         </div>

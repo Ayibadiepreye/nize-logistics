@@ -63,13 +63,25 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ['Poppins', 'sans-serif'],
-        display: ['Poppins', 'sans-serif'],
-        handwriting: ['Caveat', 'cursive'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        display: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
     },
   },
+  /**
+   * Design-system variants are composed at runtime (`badge-${tone}`,
+   * `btn-${variant}`, `toast-${tone}`), so their literal class names never
+   * appear in the source. Tailwind tree-shakes @layer components by content
+   * scanning, which silently dropped every rule it could not see — status
+   * badges rendered with no colour at all. Safelisting keeps the families.
+   */
+  safelist: [
+    { pattern: /^badge-(neutral|brand|info|success|warning|danger|accent)$/ },
+    { pattern: /^btn-(primary|secondary|outline|outline-light|ghost|accent|success|danger|sm|lg|block)$/ },
+    { pattern: /^toast-(success|error|warning)$/ },
+    { pattern: /^service-icon-(red|green)$/ },
+  ],
   plugins: [],
 };
 

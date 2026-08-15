@@ -1,125 +1,240 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { LogIn, ShieldCheck } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import FloatingWhatsApp from '@/components/FloatingWhatsApp';
-import api from '@/lib/api';
-import Link from 'next/link';
+import api, { apiError } from '@/lib/api';
+import { homeForRole, setSession, type AuthUser } from '@/lib/auth';
+import { Button, Card, Field, InlineAlert, Input } from '@/components/ui';
+import Icon from '@/components/Icon';
 
-export default function Login() {
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <Login />
+    </Suspense>
+  );
+}
+
+function Login() {
   const router = useRouter();
+  const params = useSearchParams();
+  const next = params.get('next');
+
+  const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Set after a successful sign-in when an admin has reset this password —
+  // the account must choose its own before it can go anywhere.
+  const [mustChange, setMustChange] = useState<{ user: AuthUser; currentPassword: string } | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const { data } = await api.post('/auth/login', formData);
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      const { data } = await api.post('/auth/login', form);
+      setSession(data.token, data.user);
 
-      if (data.user.role === 'admin') {
-        router.push('/admin');
-      } else if (data.user.role === 'rider') {
-        router.push('/rider');
-      } else {
-        router.push('/');
+      if (data.user.mustChangePassword) {
+        setMustChange({ user: data.user, currentPassword: form.password });
+        return;
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed');
+
+      router.push(next || homeForRole(data.user.role));
+    } catch (err) {
+      setError(apiError(err, 'Could not sign you in.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (mustChange) {
+    return (
+      <ForcePasswordChange
+        currentPassword={mustChange.currentPassword}
+        onDone={() => router.push(next || homeForRole(mustChange.user.role))}
+      />
+    );
+  }
+
+  return (
+    <div className="shell">
+      <Navbar />
+
+      <main className="flex flex-1 items-center justify-center px-4 py-14">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-6 text-center">
+            <div className="logo-icon mx-auto mb-4" style={{ width: 46, height: 46, fontSize: 20 }}>
+              <Icon name="truck-fast" />
+            </div>
+            <h1 className="text-[24px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Sign in
+            </h1>
+            <p className="mt-1 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+              For riders and administrators
+            </p>
+          </div>
+
+          <Card className="card-pad">
+            <form onSubmit={submit} className="space-y-4">
+              {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+
+              <Field label="Email or username" required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="text"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="you@nizelogistics.com"
+                    autoComplete="username"
+                    required
+                    autoFocus
+                  />
+                )}
+              </Field>
+
+              <Field label="Password" required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    required
+                  />
+                )}
+              </Field>
+
+              <Button type="submit" variant="primary" size="lg" block loading={loading} icon={<LogIn size={15} />}>
+                Sign in
+              </Button>
+            </form>
+          </Card>
+
+          <p className="mt-5 text-center text-[13.5px]" style={{ color: 'var(--text-secondary)' }}>
+            Booking a delivery doesn&apos;t need an account —{' '}
+            <Link href="/order" style={{ color: 'var(--brand-text)', fontWeight: 600 }}>
+              book here
+            </Link>{' '}
+            or{' '}
+            <Link href="/track" style={{ color: 'var(--brand-text)', fontWeight: 600 }}>
+              track an order
+            </Link>
+            .
+          </p>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
+
+/** Blocks the session until a reset password is replaced by the account owner. */
+function ForcePasswordChange({
+  currentPassword,
+  onDone,
+}: {
+  currentPassword: string;
+  onDone: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const mismatch = confirm.length > 0 && confirm !== newPassword;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await api.post('/auth/change-password', { currentPassword, newPassword });
+      onDone();
+    } catch (err) {
+      setError(apiError(err, 'Could not update your password.'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
+    <div className="shell">
       <Navbar />
-      
-      <main className="min-h-screen flex flex-col">
-        <section className="flex-1 py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
-          <div className="container">
-            <div className="max-w-md mx-auto">
-              <div className="card">
-                <div className="text-center mb-6">
-                  <div className="logo-icon mx-auto mb-4" style={{ width: '60px', height: '60px', fontSize: '28px' }}>
-                    <i className="fas fa-truck-fast"></i>
-                  </div>
-                  <h1 className="text-3xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Welcome Back</h1>
-                  <p style={{ color: 'var(--text-secondary)' }}>Sign in to access your dashboard</p>
-                </div>
-
-                {error && (
-                  <div style={{ 
-                    background: 'rgba(255, 51, 102, 0.1)', 
-                    border: '1px solid var(--accent)', 
-                    color: 'var(--accent)',
-                    padding: '12px 16px',
-                    borderRadius: '10px',
-                    marginBottom: '24px',
-                    fontSize: '14px'
-                  }}>
-                    {error}
-                  </div>
-                )}
-
-                <form onSubmit={handleSubmit}>
-                  <div className="mb-4">
-                    <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="input"
-                      placeholder="Enter your email"
-                      required
-                    />
-                  </div>
-
-                  <div className="mb-6">
-                    <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                      Password
-                    </label>
-                    <input
-                      type="password"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="input"
-                      placeholder="Enter your password"
-                      required
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    disabled={loading} 
-                    className="btn btn-primary btn-lg"
-                    style={{ width: '100%' }}
-                  >
-                    {loading ? 'Signing In...' : 'Sign In'}
-                  </button>
-                </form>
-
-
-              </div>
+      <main className="flex flex-1 items-center justify-center px-4 py-14">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-6 text-center">
+            <div
+              className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
+              style={{ background: 'var(--warning-subtle)', color: 'var(--warning-text)' }}
+            >
+              <ShieldCheck size={22} />
             </div>
+            <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Choose a new password
+            </h1>
+            <p className="mt-1 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+              An administrator reset your password. Pick your own to continue.
+            </p>
           </div>
-        </section>
-      </main>
 
+          <Card className="card-pad">
+            <form onSubmit={submit} className="space-y-4">
+              {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+
+              <Field label="New password" hint="At least 8 characters, including a letter and a number." required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                    autoFocus
+                  />
+                )}
+              </Field>
+
+              <Field label="Confirm password" error={mismatch ? 'Passwords do not match' : undefined} required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    value={confirm}
+                    invalid={mismatch}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                )}
+              </Field>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                block
+                loading={loading}
+                disabled={newPassword.length < 8 || mismatch}
+              >
+                Set password and continue
+              </Button>
+            </form>
+          </Card>
+        </div>
+      </main>
       <Footer />
-      <FloatingWhatsApp />
-    </>
+    </div>
   );
 }
