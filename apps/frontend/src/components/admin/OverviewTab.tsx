@@ -125,27 +125,30 @@ export function OverviewTab({ onGoToOrders }: { onGoToOrders: (status?: string) 
         <Kpi
           label="Orders today"
           value={number(today.ordersToday)}
-          icon={<Package size={14} />}
+          icon={<Package size={17} />}
+          tone="brand"
           meta={<span>{number(orders.totalOrders)} all time</span>}
         />
         <Kpi
           label="In progress"
           value={number(orders.activeOrders)}
-          icon={<Activity size={14} />}
-          tone="brand"
+          icon={<Activity size={17} />}
+          tone="info"
           meta={<span>{number(orders.pendingOrders)} awaiting assignment</span>}
         />
         <Kpi
           label="Revenue collected"
           value={naira(orders.totalRevenue)}
-          icon={<Wallet size={14} />}
+          icon={<Wallet size={17} />}
           tone="success"
+          colorValue
           meta={<span>{naira(orders.outstanding)} outstanding</span>}
         />
         <Kpi
           label="Riders online"
           value={`${number(riders.onlineRiders)} / ${number(riders.totalRiders)}`}
-          icon={<Bike size={14} />}
+          icon={<Bike size={17} />}
+          tone="accent"
           meta={<span>{number(riders.busyRiders)} on a delivery</span>}
         />
       </div>

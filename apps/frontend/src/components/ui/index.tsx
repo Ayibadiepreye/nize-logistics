@@ -546,13 +546,16 @@ export function Tabs<T extends string>({
   tabs,
   value,
   onChange,
+  onBanner,
 }: {
   tabs: Array<{ id: T; label: string; icon?: React.ReactNode; count?: number }>;
   value: T;
   onChange: (id: T) => void;
+  /** Restyles the bar for the blue dashboard banner. */
+  onBanner?: boolean;
 }) {
   return (
-    <div className="tabs" role="tablist">
+    <div className={cx('tabs', onBanner && 'tabs-banner')} role="tablist">
       {tabs.map((t) => (
         <button
           key={t.id}
@@ -632,39 +635,60 @@ export function Pagination({
 
 /* ------------------------------------------------------------------- KPI */
 
+const TONE_TEXT: Record<Tone, string> = {
+  neutral: 'var(--text-primary)',
+  brand: 'var(--brand-text)',
+  info: 'var(--info-text)',
+  success: 'var(--success-text)',
+  warning: 'var(--warning-text)',
+  danger: 'var(--danger-text)',
+  accent: 'var(--accent-text)',
+};
+
+const TONE_SUBTLE: Record<Tone, string> = {
+  neutral: 'var(--bg-inset)',
+  brand: 'var(--brand-subtle)',
+  info: 'var(--info-subtle)',
+  success: 'var(--success-subtle)',
+  warning: 'var(--warning-subtle)',
+  danger: 'var(--danger-subtle)',
+  accent: 'var(--accent-subtle)',
+};
+
+/**
+ * Headline metric tile. Colour lives in the icon chip and (optionally) the
+ * value; everything else stays neutral so a row of tiles reads as data rather
+ * than as a row of coloured boxes.
+ */
 export function Kpi({
   label,
   value,
   icon,
   meta,
-  tone,
+  tone = 'brand',
+  colorValue,
 }: {
   label: string;
   value: React.ReactNode;
   icon?: React.ReactNode;
   meta?: React.ReactNode;
   tone?: Tone;
+  /** Tint the number too — reserve it for the one metric that matters most. */
+  colorValue?: boolean;
 }) {
-  const color =
-    tone === 'success'
-      ? 'var(--success-text)'
-      : tone === 'danger'
-        ? 'var(--danger-text)'
-        : tone === 'warning'
-          ? 'var(--warning-text)'
-          : tone === 'accent'
-            ? 'var(--accent-text)'
-            : tone === 'brand'
-              ? 'var(--brand-text)'
-              : 'var(--text-primary)';
-
   return (
     <div className="kpi">
-      <div className="kpi-label">
-        {icon}
-        {label}
-      </div>
-      <div className="kpi-value" style={{ color }}>
+      {icon && (
+        <div
+          className="kpi-icon"
+          style={{ background: TONE_SUBTLE[tone], color: TONE_TEXT[tone] }}
+          aria-hidden
+        >
+          {icon}
+        </div>
+      )}
+      <div className="kpi-label">{label}</div>
+      <div className="kpi-value" style={colorValue ? { color: TONE_TEXT[tone] } : undefined}>
         {value}
       </div>
       {meta && <div className="kpi-meta">{meta}</div>}

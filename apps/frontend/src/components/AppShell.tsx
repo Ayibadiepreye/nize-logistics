@@ -56,32 +56,47 @@ export function RequireRole({
   return <>{children}</>;
 }
 
-/** Standard dashboard frame: navbar, constrained content column, footer space. */
+/**
+ * Standard dashboard frame.
+ *
+ * The branded blue banner carries the title, actions and (optionally) the tab
+ * bar; page content overlaps its lower edge so the first row of cards sits on
+ * top of it. That single device is what stops the dashboards reading as a
+ * generic admin panel bolted onto the marketing site.
+ */
 export function DashboardShell({
   title,
   subtitle,
   actions,
+  tabs,
   children,
 }: {
   title: string;
   subtitle?: string;
   actions?: React.ReactNode;
+  /** Rendered inside the banner, below the title. */
+  tabs?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div className="shell">
       <Navbar />
-      <main className="shell-main">
+
+      <div className={tabs ? 'page-banner' : 'page-banner page-banner-compact'}>
         <div className="container">
-          <div className="page-head">
+          <div className={tabs ? 'page-head mb-4' : 'page-head mb-0'}>
             <div>
               <h1 className="page-title">{title}</h1>
               {subtitle && <p className="page-subtitle">{subtitle}</p>}
             </div>
             {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
           </div>
-          {children}
+          {tabs}
         </div>
+      </div>
+
+      <main className="shell-main shell-main-overlap">
+        <div className="container">{children}</div>
       </main>
     </div>
   );

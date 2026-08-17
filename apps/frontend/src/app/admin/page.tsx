@@ -46,9 +46,9 @@ function AdminDashboard() {
           ? `Signed in as ${user.fullName}${isSuperAdmin ? ' · Super admin' : ''}`
           : 'Platform overview and management'
       }
-    >
-      <div className="mb-5">
+      tabs={
         <Tabs<TabId>
+          onBanner
           value={tab}
           onChange={setTab}
           tabs={[
@@ -60,8 +60,8 @@ function AdminDashboard() {
             { id: 'settings', label: 'Settings', icon: <SlidersHorizontal size={14} /> },
           ]}
         />
-      </div>
-
+      }
+    >
       {tab === 'overview' && <OverviewTab onGoToOrders={goToOrders} />}
       {/* Remount when the incoming filter changes so the table picks it up. */}
       {tab === 'orders' && <OrdersTab key={ordersStatus ?? 'all'} initialStatus={ordersStatus} />}

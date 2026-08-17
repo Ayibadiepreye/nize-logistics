@@ -328,13 +328,25 @@ function EarningsTile({
 }) {
   return (
     <div
-      className="kpi gap-1 p-3 sm:gap-2 sm:p-[18px]"
-      style={highlight ? { borderColor: 'var(--brand-border)' } : undefined}
+      className="kpi gap-0.5 p-3 sm:gap-1.5 sm:p-[18px]"
+      style={
+        highlight
+          ? { borderColor: 'var(--brand-border)', background: 'var(--brand-subtle)' }
+          : undefined
+      }
     >
-      <div className="kpi-label text-[12px] sm:text-[13px]">
+      <div
+        className="kpi-icon mb-1 h-7 w-7 sm:h-[34px] sm:w-[34px]"
+        style={
+          highlight
+            ? { background: 'var(--brand)', color: '#fff' }
+            : { background: 'var(--bg-inset)', color: 'var(--text-secondary)' }
+        }
+        aria-hidden
+      >
         {icon}
-        {label}
       </div>
+      <div className="kpi-label text-[11.5px] sm:text-[12.5px]">{label}</div>
       <div
         className="kpi-value text-[17px] sm:text-[26px]"
         style={{ color: highlight ? 'var(--brand-text)' : undefined }}
@@ -384,29 +396,35 @@ function ActiveJob({
   }[job.status as string];
 
   return (
-    <Card>
+    <Card style={{ overflow: 'hidden', boxShadow: 'var(--shadow-md)' }}>
+      {/* Branded header — this card is the whole point of the screen, so it
+          carries colour the rest of the page deliberately does not. */}
       <div
         className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
-        style={{ borderBottom: '1px solid var(--border-subtle)' }}
+        style={{
+          background: 'linear-gradient(135deg, var(--blue-700) 0%, var(--blue-500) 100%)',
+          color: '#fff',
+        }}
       >
         <div>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-[15px] font-bold" style={{ color: 'var(--brand-text)' }}>
-              {job.ticketId}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[16px] font-bold tracking-tight">{job.ticketId}</span>
+            <span
+              className="badge"
+              style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'transparent' }}
+            >
+              {statusLabel(job.status)}
             </span>
-            <StatusBadge status={job.status} />
           </div>
-          <p className="mt-0.5 text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+          <p className="mt-0.5 text-[13px]" style={{ color: 'rgba(255,255,255,0.82)' }}>
             {job.distanceKm} km · {job.paymentMethod === 'cod' ? 'Collect cash on delivery' : 'Paid online'}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-[11.5px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[11px] uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.7)' }}>
             You earn
           </p>
-          <p className="text-[20px] font-bold tabular-nums" style={{ color: 'var(--success-text)' }}>
-            {naira(job.totalPrice)}
-          </p>
+          <p className="text-[22px] font-bold tabular-nums">{naira(job.totalPrice)}</p>
         </div>
       </div>
 
