@@ -231,12 +231,12 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Total Orders</p>
                 <p className="text-3xl font-bold mb-2" style={{ color: 'var(--primary)' }}>
-                  {stats.orders?.totalOrders || 0}
+                  {stats?.orders?.totalOrders || 0}
                 </p>
                 <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  <span>Pending: {stats.orders?.pendingOrders || 0}</span>
+                  <span>Pending: {stats?.orders?.pendingOrders || 0}</span>
                   <span>•</span>
-                  <span>Active: {stats.orders?.activeOrders || 0}</span>
+                  <span>Active: {stats?.orders?.activeOrders || 0}</span>
                 </div>
               </div>
               <div 
@@ -262,7 +262,7 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Delivered</p>
                 <p className="text-3xl font-bold text-teal">
-                  {stats.orders?.deliveredOrders || 0}
+                  {stats?.orders?.deliveredOrders || 0}
                 </p>
               </div>
               <div 
@@ -285,7 +285,7 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-sm font-medium mb-1 text-pink-100">Total Revenue</p>
                 <p className="text-3xl font-bold text-white">
-                  ₦{parseFloat(stats.orders?.totalRevenue || 0).toLocaleString()}
+                  ₦{parseFloat(stats?.orders?.totalRevenue || 0).toLocaleString()}
                 </p>
               </div>
             </div>
@@ -309,12 +309,12 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Active Riders</p>
                 <p className="text-3xl font-bold" style={{ color: '#8b5cf6' }}>
-                  {stats.riders?.totalRiders || 0}
+                  {stats?.riders?.totalRiders || 0}
                 </p>
                 <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
                   <span className="flex items-center gap-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    Online: {stats.riders?.onlineRiders || 0}
+                    Online: {stats?.riders?.onlineRiders || 0}
                   </span>
                 </div>
               </div>
