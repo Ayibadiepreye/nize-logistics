@@ -4,28 +4,52 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import api from '@/lib/api';
-import { Package, Users, DollarSign, TrendingUp, UserPlus, Mail, Activity, Clock, CheckCircle, XCircle, AlertCircle, ArrowRight, BarChart3, Eye } from 'lucide-react';
+import { Package, Users, DollarSign, TrendingUp, UserPlus, Mail, Activity, Clock, CheckCircle, XCircle, AlertCircle, ArrowRight, BarChart3, Eye, FileText, AlertTriangle } from 'lucide-react';
 
 export default function AdminDashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<any>({
+    orders: {
+      totalOrders: 0,
+      pendingOrders: 0,
+      activeOrders: 0,
+      deliveredOrders: 0,
+      totalRevenue: 0,
+    },
+    riders: {
+      totalRiders: 0,
+      onlineRiders: 0,
+      busyRiders: 0,
+    },
+    reports: {
+      totalReports: 0,
+      openReports: 0,
+      resolvedReports: 0,
+    },
+  });
   const [orders, setOrders] = useState<any[]>([]);
   const [riders, setRiders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('rider');
 
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (!user) {
+    const userStr = localStorage.getItem('user');
+    if (!userStr) {
       router.push('/login');
       return;
     }
 
-    const userData = JSON.parse(user);
-    if (userData.role !== 'admin' && userData.role !== 'super_admin') {
-      router.push('/');
+    try {
+      const userData = JSON.parse(userStr);
+      if (userData.role !== 'admin' && userData.role !== 'super_admin') {
+        router.push('/');
+        return;
+      }
+    } catch {
+      router.push('/login');
       return;
     }
 
@@ -35,16 +59,48 @@ export default function AdminDashboard() {
   const loadDashboard = async () => {
     try {
       const [dashData, ordersData, ridersData] = await Promise.all([
-        api.get('/admin/dashboard'),
-        api.get('/admin/orders?limit=10'),
-        api.get('/admin/riders'),
+        api.get('/admin/dashboard').catch(err => {
+          console.error('Admin dashboard stats error:', err);
+          return { data: null };
+        }),
+        api.get('/admin/orders?limit=10').catch(err => {
+          console.error('Admin orders error:', err);
+          return { data: { orders: [] } };
+        }),
+        api.get('/admin/riders').catch(err => {
+          console.error('Admin riders error:', err);
+          return { data: { riders: [] } };
+        }),
       ]);
 
-      setStats(dashData.data);
-      setOrders(ordersData.data.orders);
-      setRiders(ridersData.data.riders);
-    } catch (error) {
+      if (dashData?.data) {
+        setStats({
+          orders: dashData.data.orders || {
+            totalOrders: 0,
+            pendingOrders: 0,
+            activeOrders: 0,
+            deliveredOrders: 0,
+            totalRevenue: 0,
+          },
+          riders: dashData.data.riders || {
+            totalRiders: 0,
+            onlineRiders: 0,
+            busyRiders: 0,
+          },
+          reports: dashData.data.reports || {
+            totalReports: 0,
+            openReports: 0,
+            resolvedReports: 0,
+          },
+        });
+      }
+
+      setOrders(ordersData?.data?.orders || []);
+      setRiders(ridersData?.data?.riders || []);
+      setErrorMessage('');
+    } catch (error: any) {
       console.error('Failed to load dashboard', error);
+      setErrorMessage(error?.response?.data?.error || 'Failed to load dashboard data.');
     } finally {
       setLoading(false);
     }
@@ -212,8 +268,19 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {/* Error Banner if any */}
+          {errorMessage && (
+            <div 
+              className="rounded-xl p-4 flex items-center gap-3"
+              style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+            >
+              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-400">{errorMessage}</p>
+            </div>
+          )}
+
           {/* Stats Grid with Modern Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
             {/* Total Orders Card */}
             <div 
               className="rounded-2xl p-6 relative overflow-hidden group hover:shadow-2xl transition-all duration-300"
@@ -308,7 +375,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Active Riders</p>
-                <p className="text-3xl font-bold" style={{ color: '#8b5cf6' }}>
+                <p className="text-3xl font-bold mb-2" style={{ color: '#8b5cf6' }}>
                   {stats?.riders?.totalRiders || 0}
                 </p>
                 <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -321,6 +388,37 @@ export default function AdminDashboard() {
               <div 
                 className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full opacity-5 group-hover:scale-110 transition-transform duration-500"
                 style={{ background: '#8b5cf6' }}
+              ></div>
+            </div>
+
+            {/* Reports Card */}
+            <div 
+              className="rounded-2xl p-6 relative overflow-hidden group hover:shadow-2xl transition-all duration-300"
+              style={{ background: 'var(--bg-card)' }}
+            >
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div 
+                    className="w-12 h-12 rounded-xl flex items-center justify-center"
+                    style={{ background: 'rgba(245, 158, 11, 0.1)' }}
+                  >
+                    <AlertTriangle className="w-6 h-6" style={{ color: '#f59e0b' }} />
+                  </div>
+                  <FileText className="w-5 h-5" style={{ color: 'var(--text-secondary)', opacity: 0.5 }} />
+                </div>
+                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Issue Reports</p>
+                <p className="text-3xl font-bold mb-2" style={{ color: '#f59e0b' }}>
+                  {stats?.reports?.openReports ?? 0}
+                </p>
+                <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  <span>Open: {stats?.reports?.openReports ?? 0}</span>
+                  <span>•</span>
+                  <span>Total: {stats?.reports?.totalReports ?? 0}</span>
+                </div>
+              </div>
+              <div 
+                className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full opacity-5 group-hover:scale-110 transition-transform duration-500"
+                style={{ background: '#f59e0b' }}
               ></div>
             </div>
           </div>
@@ -367,61 +465,70 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {orders.map((order, index) => (
-                      <tr 
-                        key={order.id} 
-                        className="border-b hover:bg-opacity-50 transition-colors"
-                        style={{ borderColor: 'var(--border-color)' }}
-                      >
-                        <td className="px-4 py-4">
-                          <span className="font-mono font-bold text-sm" style={{ color: 'var(--primary)' }}>
-                            {order.ticketId}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <div className="max-w-xs">
-                            <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                              {order.pickupAddress?.split(',')[0]}
-                            </p>
-                            <p className="text-xs truncate flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
-                              <ArrowRight className="w-3 h-3" />
-                              {order.dropoffAddress?.split(',')[0]}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className={`badge badge-${order.status} flex items-center gap-1 w-fit`}>
-                            {getStatusIcon(order.status)}
-                            {order.status.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className="font-bold" style={{ color: 'var(--text-primary)' }}>
-                            ₦{parseFloat(order.totalPrice).toLocaleString()}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                            {new Date(order.createdAt).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 text-right">
-                          <a
-                            href={`/track/${order.ticketId}`}
-                            target="_blank"
-                            className="inline-flex items-center gap-1 text-sm font-semibold hover:gap-2 transition-all"
-                            style={{ color: 'var(--primary)' }}
-                          >
-                            <Eye className="w-4 h-4" />
-                            View
-                          </a>
+                    {orders.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-secondary)' }}>
+                          <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                          <p className="text-sm font-medium">No orders found</p>
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      orders.map((order) => (
+                        <tr 
+                          key={order.id} 
+                          className="border-b hover:bg-opacity-50 transition-colors"
+                          style={{ borderColor: 'var(--border-color)' }}
+                        >
+                          <td className="px-4 py-4">
+                            <span className="font-mono font-bold text-sm" style={{ color: 'var(--primary)' }}>
+                              {order.ticketId}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="max-w-xs">
+                              <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                                {order.pickupAddress?.split(',')[0] || 'N/A'}
+                              </p>
+                              <p className="text-xs truncate flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+                                <ArrowRight className="w-3 h-3" />
+                                {order.dropoffAddress?.split(',')[0] || 'N/A'}
+                              </p>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className={`badge badge-${order.status || 'pending'} flex items-center gap-1 w-fit`}>
+                              {getStatusIcon(order.status)}
+                              {order.status ? order.status.replace('_', ' ') : 'pending'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="font-bold" style={{ color: 'var(--text-primary)' }}>
+                              ₦{parseFloat(order.totalPrice || 0).toLocaleString()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                              {order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric',
+                                year: 'numeric'
+                              }) : 'N/A'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-right">
+                            <a
+                              href={`/track/${order.ticketId}`}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 text-sm font-semibold hover:gap-2 transition-all"
+                              style={{ color: 'var(--primary)' }}
+                            >
+                              <Eye className="w-4 h-4" />
+                              View
+                            </a>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -438,84 +545,91 @@ export default function AdminDashboard() {
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your delivery riders</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-              {riders.map((rider) => (
-                <div 
-                  key={rider.id}
-                  className="rounded-xl p-5 border hover:border-opacity-100 hover:shadow-lg transition-all duration-300"
-                  style={{ 
-                    background: 'var(--bg-secondary)',
-                    borderColor: 'var(--border-color)',
-                    borderWidth: '1px'
-                  }}
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div 
-                        className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg"
-                        style={{ 
-                          background: rider.isOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(156, 163, 175, 0.1)',
-                          color: rider.isOnline ? '#10b981' : '#9ca3af'
-                        }}
-                      >
-                        {rider.fullName?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-bold" style={{ color: 'var(--text-primary)' }}>{rider.fullName}</p>
-                        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{rider.phone}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {rider.isOnline && (
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      )}
-                      <span className={`badge text-xs ${rider.isOnline ? 'badge-picked_up' : 'badge-pending'}`}>
-                        {rider.isOnline ? 'Online' : 'Offline'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 mb-4">
-                    <div 
-                      className="flex items-center justify-between p-3 rounded-lg"
-                      style={{ background: 'var(--bg-primary)' }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Vehicle</span>
-                      <span className="text-sm font-bold capitalize" style={{ color: 'var(--text-primary)' }}>
-                        {rider.vehicleType}
-                      </span>
-                    </div>
-                    <div 
-                      className="flex items-center justify-between p-3 rounded-lg"
-                      style={{ background: 'var(--bg-primary)' }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Plate Number</span>
-                      <span className="text-sm font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {rider.plateNumber}
-                      </span>
-                    </div>
-                    <div 
-                      className="flex items-center justify-between p-3 rounded-lg"
-                      style={{ background: 'var(--bg-primary)' }}
-                    >
-                      <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Total Deliveries</span>
-                      <span className="text-sm font-bold text-teal">
-                        {rider.totalDeliveries}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => toggleRiderStatus(rider.id, rider.status)}
-                    className={`btn w-full ${
-                      rider.status === 'active' ? 'btn-outline' : 'btn-primary'
-                    }`}
+            {riders.length === 0 ? (
+              <div className="p-8 text-center rounded-xl" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
+                <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm font-medium">No registered riders found</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                {riders.map((rider) => (
+                  <div 
+                    key={rider.id}
+                    className="rounded-xl p-5 border hover:border-opacity-100 hover:shadow-lg transition-all duration-300"
+                    style={{ 
+                      background: 'var(--bg-secondary)',
+                      borderColor: 'var(--border-color)',
+                      borderWidth: '1px'
+                    }}
                   >
-                    {rider.status === 'active' ? 'Suspend Rider' : 'Activate Rider'}
-                  </button>
-                </div>
-              ))}
-            </div>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg"
+                          style={{ 
+                            background: rider.isOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(156, 163, 175, 0.1)',
+                            color: rider.isOnline ? '#10b981' : '#9ca3af'
+                          }}
+                        >
+                          {rider.fullName?.charAt(0).toUpperCase() || 'R'}
+                        </div>
+                        <div>
+                          <p className="font-bold" style={{ color: 'var(--text-primary)' }}>{rider.fullName || 'Unnamed Rider'}</p>
+                          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{rider.phone || 'No phone'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {rider.isOnline && (
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        )}
+                        <span className={`badge text-xs ${rider.isOnline ? 'badge-picked_up' : 'badge-pending'}`}>
+                          {rider.isOnline ? 'Online' : 'Offline'}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 mb-4">
+                      <div 
+                        className="flex items-center justify-between p-3 rounded-lg"
+                        style={{ background: 'var(--bg-primary)' }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Vehicle</span>
+                        <span className="text-sm font-bold capitalize" style={{ color: 'var(--text-primary)' }}>
+                          {rider.vehicleType || 'Motorcycle'}
+                        </span>
+                      </div>
+                      <div 
+                        className="flex items-center justify-between p-3 rounded-lg"
+                        style={{ background: 'var(--bg-primary)' }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Plate Number</span>
+                        <span className="text-sm font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                          {rider.plateNumber || 'N/A'}
+                        </span>
+                      </div>
+                      <div 
+                        className="flex items-center justify-between p-3 rounded-lg"
+                        style={{ background: 'var(--bg-primary)' }}
+                      >
+                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Total Deliveries</span>
+                        <span className="text-sm font-bold text-teal">
+                          {rider.totalDeliveries || 0}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => toggleRiderStatus(rider.id, rider.status)}
+                      className={`btn w-full ${
+                        rider.status === 'active' ? 'btn-outline' : 'btn-primary'
+                      }`}
+                    >
+                      {rider.status === 'active' ? 'Suspend Rider' : 'Activate Rider'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

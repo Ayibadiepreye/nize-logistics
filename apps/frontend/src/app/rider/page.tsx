@@ -1,22 +1,52 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import api from '@/lib/api';
 import { initSocket } from '@/lib/socket';
-import { Power, DollarSign, Package, CheckCircle, MapPin, Phone, Navigation, Zap, TrendingUp, Mail, MessageSquare, Activity } from 'lucide-react';
+import { Power, DollarSign, Package, CheckCircle, MapPin, Phone, Navigation, Zap, TrendingUp, Mail, MessageSquare, Activity, AlertCircle } from 'lucide-react';
 
 export default function RiderDashboard() {
   const router = useRouter();
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<any>({
+    isOnline: false,
+    isBusy: false,
+    todayDeliveries: 0,
+    todayEarnings: '0.00',
+    totalDeliveries: 0,
+    totalAmount: '0.00',
+  });
   const [currentJob, setCurrentJob] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const currentJobRef = useRef<any>(null);
+  const statsRef = useRef<any>(null);
 
   useEffect(() => {
-    const user = localStorage.getItem('user');
-    if (!user || JSON.parse(user).role !== 'rider') {
+    currentJobRef.current = currentJob;
+  }, [currentJob]);
+
+  useEffect(() => {
+    statsRef.current = stats;
+  }, [stats]);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (!userStr) {
+      router.push('/login');
+      return;
+    }
+
+    try {
+      const user = JSON.parse(userStr);
+      if (user?.role !== 'rider') {
+        router.push('/login');
+        return;
+      }
+    } catch {
       router.push('/login');
       return;
     }
@@ -24,25 +54,31 @@ export default function RiderDashboard() {
     loadDashboard();
 
     const token = localStorage.getItem('token');
+    let socket: any = null;
+    let locationInterval: any = null;
+
     if (token) {
-      const socket = initSocket(token);
+      socket = initSocket(token);
 
-      socket.on('rider:new-job', () => {
+      const handleNewJob = () => {
         loadDashboard();
-      });
+      };
 
-      socket.on('order:status-update', () => {
+      const handleStatusUpdate = () => {
         loadDashboard();
-      });
+      };
 
-      const locationInterval = setInterval(() => {
-        if (stats?.isOnline && navigator.geolocation) {
+      socket.on('rider:new-job', handleNewJob);
+      socket.on('order:status-update', handleStatusUpdate);
+
+      locationInterval = setInterval(() => {
+        if (statsRef.current?.isOnline && navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
               socket.emit('rider:location', {
                 lat: position.coords.latitude,
                 lng: position.coords.longitude,
-                orderId: currentJob?.id,
+                orderId: currentJobRef.current?.id,
               });
             },
             (error) => console.error('Location error:', error)
@@ -51,18 +87,35 @@ export default function RiderDashboard() {
       }, 10000);
 
       return () => {
-        clearInterval(locationInterval);
+        if (socket) {
+          socket.off('rider:new-job', handleNewJob);
+          socket.off('order:status-update', handleStatusUpdate);
+        }
+        if (locationInterval) {
+          clearInterval(locationInterval);
+        }
       };
     }
-  }, [stats?.isOnline, currentJob?.id]);
+  }, []);
 
   const loadDashboard = async () => {
     try {
       const { data } = await api.get('/rider/dashboard');
-      setStats(data);
-      setCurrentJob(data.currentJob);
-    } catch (error) {
+      if (data) {
+        setStats({
+          isOnline: data.isOnline ?? false,
+          isBusy: data.isBusy ?? false,
+          todayDeliveries: data.todayDeliveries ?? 0,
+          todayEarnings: data.todayEarnings ?? '0.00',
+          totalDeliveries: data.totalDeliveries ?? 0,
+          totalAmount: data.totalAmount ?? '0.00',
+        });
+        setCurrentJob(data.currentJob || null);
+        setErrorMessage('');
+      }
+    } catch (error: any) {
       console.error('Failed to load dashboard', error);
+      setErrorMessage(error?.response?.data?.error || 'Failed to load dashboard data. Please refresh.');
     } finally {
       setLoading(false);
     }
@@ -73,8 +126,9 @@ export default function RiderDashboard() {
     try {
       const { data } = await api.post('/rider/toggle-online');
       setStats((prev: any) => ({ ...prev, isOnline: data.isOnline }));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to toggle status', error);
+      alert(error.response?.data?.error || 'Failed to toggle online status');
     } finally {
       setToggling(false);
     }

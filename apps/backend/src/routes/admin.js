@@ -25,9 +25,30 @@ router.get('/dashboard', authenticate, requireRole(['admin', 'super_admin']), as
       busyRiders: sql`SUM(CASE WHEN is_busy = true THEN 1 ELSE 0 END)`,
     }).from(users).where(eq(users.role, 'rider'));
 
+    const [reportStats] = await db.select({
+      totalReports: sql`COUNT(*)`,
+      openReports: sql`SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)`,
+      resolvedReports: sql`SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END)`,
+    }).from(reports);
+
     res.json({
-      orders: stats,
-      riders: riderStats,
+      orders: stats || {
+        totalOrders: 0,
+        pendingOrders: 0,
+        activeOrders: 0,
+        deliveredOrders: 0,
+        totalRevenue: '0',
+      },
+      riders: riderStats || {
+        totalRiders: 0,
+        onlineRiders: 0,
+        busyRiders: 0,
+      },
+      reports: {
+        totalReports: Number(reportStats?.totalReports || 0),
+        openReports: Number(reportStats?.openReports || 0),
+        resolvedReports: Number(reportStats?.resolvedReports || 0),
+      },
     });
   } catch (error) {
     next(error);

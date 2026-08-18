@@ -17,7 +17,7 @@ router.get('/dashboard', authenticate, requireRole(['rider']), async (req, res, 
     const [currentJob] = await db.select().from(orders)
       .where(and(
         eq(orders.assignedRiderId, riderId),
-        sql`${orders.status} IN ('assigned', 'picked_up')`
+        sql`${orders.status} IN ('assigned', 'accepted', 'picked_up')`
       ));
 
     // Get today's deliveries
@@ -31,16 +31,16 @@ router.get('/dashboard', authenticate, requireRole(['rider']), async (req, res, 
         sql`${orders.deliveredAt} >= ${today}`
       ));
 
-    const todayEarnings = todayDeliveries.reduce((sum, o) => sum + parseFloat(o.totalPrice), 0);
+    const todayEarnings = todayDeliveries.reduce((sum, o) => sum + (parseFloat(o.totalPrice) || 0), 0);
 
     res.json({
-      currentJob,
-      todayDeliveries: todayDeliveries.length,
+      currentJob: currentJob || null,
+      todayDeliveries: todayDeliveries.length || 0,
       todayEarnings: todayEarnings.toFixed(2),
-      isOnline: req.user.isOnline,
-      isBusy: req.user.isBusy,
-      totalDeliveries: req.user.totalDeliveries,
-      totalAmount: req.user.totalAmount,
+      isOnline: req.user.isOnline ?? false,
+      isBusy: req.user.isBusy ?? false,
+      totalDeliveries: req.user.totalDeliveries || 0,
+      totalAmount: req.user.totalAmount || '0.00',
     });
   } catch (error) {
     next(error);
