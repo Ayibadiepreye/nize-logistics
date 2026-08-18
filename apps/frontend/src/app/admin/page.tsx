@@ -267,18 +267,18 @@ export default function AdminDashboard() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'delivered':
-        return <span className="badge badge-delivered flex items-center gap-1 font-semibold"><CheckCircle className="w-3.5 h-3.5" /> Delivered</span>;
+        return <span className="badge badge-delivered"><CheckCircle className="w-3 h-3 inline" /> Delivered</span>;
       case 'cancelled':
-        return <span className="badge badge-cancelled flex items-center gap-1 font-semibold"><XCircle className="w-3.5 h-3.5" /> Cancelled</span>;
+        return <span className="badge badge-cancelled"><XCircle className="w-3 h-3 inline" /> Cancelled</span>;
       case 'picked_up':
       case 'in_transit':
-        return <span className="badge badge-picked_up flex items-center gap-1 font-semibold"><Activity className="w-3.5 h-3.5" /> In Transit</span>;
+        return <span className="badge badge-picked_up"><Activity className="w-3 h-3 inline" /> In Transit</span>;
       case 'accepted':
       case 'assigned':
-        return <span className="badge badge-accepted flex items-center gap-1 font-semibold"><Clock className="w-3.5 h-3.5" /> Assigned</span>;
+        return <span className="badge badge-assigned"><Clock className="w-3 h-3 inline" /> Assigned</span>;
       case 'pending':
       default:
-        return <span className="badge badge-pending flex items-center gap-1 font-semibold"><AlertCircle className="w-3.5 h-3.5" /> Pending</span>;
+        return <span className="badge badge-pending"><AlertCircle className="w-3 h-3 inline" /> Pending</span>;
     }
   };
 
@@ -286,8 +286,8 @@ export default function AdminDashboard() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
         <div className="text-center space-y-4">
-          <div className="spinner mx-auto" style={{ width: '48px', height: '48px' }}></div>
-          <p className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Loading Nize Admin Control Center...</p>
+          <div className="spinner mx-auto"></div>
+          <p className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Loading Nize Admin Center...</p>
           <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Synchronizing logistics data & dispatch status</p>
         </div>
       </div>
@@ -299,7 +299,8 @@ export default function AdminDashboard() {
       {/* Mobile Sidebar Backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 lg:hidden bg-black/60 backdrop-blur-sm transition-opacity"
+          className="fixed inset-0 z-40 lg:hidden"
+          style={{ background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)' }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -318,22 +319,22 @@ export default function AdminDashboard() {
         <div>
           <div className="p-6 border-b" style={{ borderColor: 'var(--border-color)' }}>
             <div className="flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-3 group">
+              <Link href="/" className="flex items-center gap-3">
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105"
+                  className="w-10 h-10 rounded-xl flex items-center justify-center"
                   style={{
-                    background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)',
-                    boxShadow: '0 4px 16px var(--primary-glow)',
+                    background: 'linear-gradient(135deg, #0066ff 0%, #ff3366 100%)',
+                    boxShadow: '0 4px 16px rgba(0, 102, 255, 0.4)',
                   }}
                 >
-                  <Truck className="w-6 h-6 text-white" />
+                  <Truck className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-extrabold text-xl tracking-tight" style={{ color: 'var(--primary)' }}>Nize</span>
-                    <span className="font-bold text-xl tracking-tight" style={{ color: 'var(--accent)' }}>Logistics</span>
+                  <div className="flex items-center gap-1">
+                    <span className="font-extrabold text-xl tracking-tight" style={{ color: '#0066ff' }}>Nize</span>
+                    <span className="font-bold text-xl tracking-tight" style={{ color: '#ff3366' }}>Logistics</span>
                   </div>
-                  <span className="text-xs font-semibold tracking-wider uppercase opacity-80" style={{ color: 'var(--text-secondary)' }}>
+                  <span className="text-[11px] font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)' }}>
                     Admin Center
                   </span>
                 </div>
@@ -341,14 +342,15 @@ export default function AdminDashboard() {
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white"
+                style={{ background: 'transparent', border: 'none' }}
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Current Admin Badge */}
+            {/* Current Admin Profile Card */}
             <div
-              className="mt-5 p-3 rounded-xl flex items-center gap-3 border"
+              className="mt-5 p-3.5 rounded-xl flex items-center gap-3 border"
               style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
             >
               <div
@@ -359,7 +361,7 @@ export default function AdminDashboard() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-                  {currentUser?.fullName || 'Administrator'}
+                  {currentUser?.fullName || 'Super Administrator'}
                 </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
@@ -373,107 +375,47 @@ export default function AdminDashboard() {
 
           {/* Navigation Links */}
           <nav className="p-4 space-y-1.5">
-            <button
-              onClick={() => { setActiveTab('overview'); setSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                activeTab === 'overview'
-                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
-                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
-              }`}
-              style={{
-                background: activeTab === 'overview' ? 'var(--primary)' : undefined,
-                color: activeTab === 'overview' ? '#ffffff' : undefined,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <BarChart3 className="w-5 h-5" />
-                <span>Overview</span>
-              </div>
-              <ChevronRight className={`w-4 h-4 transition-transform ${activeTab === 'overview' ? 'rotate-90' : 'opacity-40'}`} />
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('orders'); setSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                activeTab === 'orders'
-                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
-                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
-              }`}
-              style={{
-                background: activeTab === 'orders' ? 'var(--primary)' : undefined,
-                color: activeTab === 'orders' ? '#ffffff' : undefined,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <Package className="w-5 h-5" />
-                <span>Orders</span>
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-white/20 font-bold">
-                {stats?.orders?.totalOrders || 0}
-              </span>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('riders'); setSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                activeTab === 'riders'
-                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
-                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
-              }`}
-              style={{
-                background: activeTab === 'riders' ? 'var(--primary)' : undefined,
-                color: activeTab === 'riders' ? '#ffffff' : undefined,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5" />
-                <span>Rider Fleet</span>
-              </div>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-bold">
-                {stats?.riders?.onlineRiders || 0} online
-              </span>
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('reports'); setSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                activeTab === 'reports'
-                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
-                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
-              }`}
-              style={{
-                background: activeTab === 'reports' ? 'var(--primary)' : undefined,
-                color: activeTab === 'reports' ? '#ffffff' : undefined,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5" />
-                <span>Issue Reports</span>
-              </div>
-              {(stats?.reports?.openReports || 0) > 0 && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold animate-pulse">
-                  {stats?.reports?.openReports}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => { setActiveTab('settings'); setSidebarOpen(false); }}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
-                activeTab === 'settings'
-                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
-                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
-              }`}
-              style={{
-                background: activeTab === 'settings' ? 'var(--primary)' : undefined,
-                color: activeTab === 'settings' ? '#ffffff' : undefined,
-              }}
-            >
-              <div className="flex items-center gap-3">
-                <Sliders className="w-5 h-5" />
-                <span>Pricing & Settings</span>
-              </div>
-            </button>
+            {[
+              { id: 'overview', label: 'Overview', icon: BarChart3, count: null },
+              { id: 'orders', label: 'Orders', icon: Package, count: stats?.orders?.totalOrders || 0 },
+              { id: 'riders', label: 'Rider Fleet', icon: Users, count: `${stats?.riders?.onlineRiders || 0} online` },
+              { id: 'reports', label: 'Issue Reports', icon: AlertTriangle, count: stats?.reports?.openReports || 0 },
+              { id: 'settings', label: 'Pricing & Settings', icon: Sliders, count: null },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => { setActiveTab(item.id as TabType); setSidebarOpen(false); }}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-xs transition-all duration-200"
+                  style={{
+                    background: isActive ? 'linear-gradient(135deg, #0066ff 0%, #0052cc 100%)' : 'transparent',
+                    color: isActive ? '#ffffff' : 'var(--text-secondary)',
+                    boxShadow: isActive ? '0 4px 16px rgba(0, 102, 255, 0.3)' : 'none',
+                    border: 'none',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="w-4 h-4" />
+                    <span>{item.label}</span>
+                  </div>
+                  {item.count !== null && (
+                    <span
+                      className="text-[11px] px-2 py-0.5 rounded-full font-bold"
+                      style={{
+                        background: isActive ? 'rgba(255, 255, 255, 0.25)' : 'rgba(148, 163, 184, 0.15)',
+                        color: isActive ? '#ffffff' : 'var(--text-primary)',
+                      }}
+                    >
+                      {item.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </nav>
         </div>
 
@@ -481,7 +423,8 @@ export default function AdminDashboard() {
         <div className="p-4 border-t space-y-2" style={{ borderColor: 'var(--border-color)' }}>
           <Link
             href="/"
-            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-500/10 transition-all"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+            style={{ color: 'var(--text-secondary)', background: 'transparent' }}
           >
             <ExternalLink className="w-4 h-4" />
             <span>Go to Public Website</span>
@@ -489,7 +432,8 @@ export default function AdminDashboard() {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-all"
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
+            style={{ color: '#ff4d7d', background: 'transparent', border: 'none', cursor: 'pointer' }}
           >
             <LogOut className="w-4 h-4" />
             <span>Sign Out</span>
@@ -510,8 +454,8 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl border text-slate-300 hover:bg-slate-500/10"
-              style={{ borderColor: 'var(--border-color)' }}
+              className="lg:hidden p-2 rounded-xl border"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'transparent' }}
             >
               <Menu className="w-5 h-5" />
             </button>
@@ -524,15 +468,17 @@ export default function AdminDashboard() {
                 {activeTab === 'settings' && 'Pricing & Platform Configuration'}
               </h1>
               <p className="text-xs hidden sm:block" style={{ color: 'var(--text-secondary)' }}>
-                Real-time Port Harcourt Logistics Control System
+                Real-time Port Harcourt Logistics Control Center
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Live Indicator */}
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold"
-                 style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#10b981' }}>
+            <div
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold"
+              style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#10b981' }}
+            >
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
               <span>Live System</span>
             </div>
@@ -541,21 +487,17 @@ export default function AdminDashboard() {
             <button
               onClick={loadDashboard}
               disabled={refreshing}
-              className="p-2.5 rounded-xl border hover:bg-slate-500/10 transition-all disabled:opacity-50"
-              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              className="p-2.5 rounded-xl border transition-all"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'transparent', cursor: 'pointer' }}
               title="Refresh Dashboard Data"
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
 
-            {/* Invite Button */}
+            {/* Invite User CTA */}
             <button
               onClick={() => setShowInviteModal(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold text-white shadow-lg hover:shadow-xl transition-all"
-              style={{
-                background: 'linear-gradient(135deg, var(--primary) 0%, #0052cc 100%)',
-                boxShadow: '0 4px 16px var(--primary-glow)',
-              }}
+              className="btn btn-primary btn-sm"
             >
               <UserPlus className="w-4 h-4" />
               <span className="hidden sm:inline">Invite User</span>
@@ -563,146 +505,147 @@ export default function AdminDashboard() {
           </div>
         </header>
 
-        {/* Notification Banners */}
+        {/* Notification Banners & Tab Content */}
         <div className="p-4 md:p-8 space-y-6">
           {errorMessage && (
-            <div className="p-4 rounded-xl flex items-center gap-3 border bg-red-500/10 border-red-500/30 text-red-400">
+            <div className="p-4 rounded-xl flex items-center gap-3 border bg-red-500/10 border-red-500/30 text-red-400 text-xs font-semibold">
               <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <p className="text-sm font-medium">{errorMessage}</p>
+              <p>{errorMessage}</p>
             </div>
           )}
 
           {successMessage && (
-            <div className="p-4 rounded-xl flex items-center gap-3 border bg-green-500/10 border-green-500/30 text-green-400">
+            <div className="p-4 rounded-xl flex items-center gap-3 border bg-green-500/10 border-green-500/30 text-green-400 text-xs font-semibold">
               <CheckCircle className="w-5 h-5 flex-shrink-0" />
-              <p className="text-sm font-medium">{successMessage}</p>
+              <p>{successMessage}</p>
             </div>
           )}
 
           {/* ================= TAB 1: OVERVIEW ================= */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* 5 Hero KPI Cards */}
+              {/* 5 KPI Metric Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                {/* Total Orders Card */}
+                {/* Total Orders */}
                 <div
-                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  className="rounded-2xl p-5 border"
                   style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Orders</span>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0, 102, 255, 0.15)' }}>
-                      <Package className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Total Orders</span>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(0, 102, 255, 0.15)' }}>
+                      <Package className="w-4 h-4" style={{ color: '#0066ff' }} />
                     </div>
                   </div>
-                  <p className="text-3xl font-extrabold mb-2" style={{ color: 'var(--primary)' }}>
+                  <p className="text-3xl font-black mb-1" style={{ color: '#0066ff' }}>
                     {stats?.orders?.totalOrders || 0}
                   </p>
-                  <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                    <span className="font-semibold text-amber-400">{stats?.orders?.pendingOrders || 0} Pending</span>
+                  <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                    <span className="font-bold text-amber-400">{stats?.orders?.pendingOrders || 0} Pending</span>
                     <span>•</span>
-                    <span className="font-semibold text-blue-400">{stats?.orders?.activeOrders || 0} Active</span>
+                    <span className="font-bold text-blue-400">{stats?.orders?.activeOrders || 0} Active</span>
                   </div>
                 </div>
 
-                {/* Total Revenue Card */}
+                {/* Total Revenue */}
                 <div
-                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  className="rounded-2xl p-5 border"
                   style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Revenue</span>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-pink-500/15">
-                      <DollarSign className="w-5 h-5 text-pink-500" />
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Revenue</span>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(255, 51, 102, 0.15)' }}>
+                      <DollarSign className="w-4 h-4" style={{ color: '#ff3366' }} />
                     </div>
                   </div>
-                  <p className="text-3xl font-extrabold mb-2 text-pink-400">
+                  <p className="text-3xl font-black mb-1" style={{ color: '#ff3366' }}>
                     ₦{parseFloat(stats?.orders?.totalRevenue || 0).toLocaleString()}
                   </p>
-                  <p className="text-xs font-medium text-slate-400">Settled payments</p>
+                  <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>Settled payments</p>
                 </div>
 
                 {/* Delivered Packages */}
                 <div
-                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  className="rounded-2xl p-5 border"
                   style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Delivered</span>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-teal-500/15">
-                      <CheckCircle className="w-5 h-5 text-teal-400" />
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Delivered</span>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(16, 185, 129, 0.15)' }}>
+                      <CheckCircle className="w-4 h-4" style={{ color: '#10b981' }} />
                     </div>
                   </div>
-                  <p className="text-3xl font-extrabold mb-2 text-teal-400">
+                  <p className="text-3xl font-black mb-1" style={{ color: '#10b981' }}>
                     {stats?.orders?.deliveredOrders || 0}
                   </p>
-                  <p className="text-xs font-medium text-slate-400">Successfully completed</p>
+                  <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>Completed packages</p>
                 </div>
 
-                {/* Active Fleet */}
+                {/* Active Riders */}
                 <div
-                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  className="rounded-2xl p-5 border"
                   style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Riders</span>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-purple-500/15">
-                      <Users className="w-5 h-5 text-purple-400" />
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Fleet</span>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(139, 92, 246, 0.15)' }}>
+                      <Users className="w-4 h-4" style={{ color: '#8b5cf6' }} />
                     </div>
                   </div>
-                  <p className="text-3xl font-extrabold mb-2 text-purple-400">
+                  <p className="text-3xl font-black mb-1" style={{ color: '#8b5cf6' }}>
                     {stats?.riders?.totalRiders || 0}
                   </p>
-                  <div className="flex items-center gap-1.5 text-xs text-green-400 font-semibold">
+                  <div className="flex items-center gap-1.5 text-[11px] text-green-400 font-bold">
                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    <span>{stats?.riders?.onlineRiders || 0} Active Online</span>
+                    <span>{stats?.riders?.onlineRiders || 0} Online Now</span>
                   </div>
                 </div>
 
-                {/* Issue Reports */}
+                {/* Reports */}
                 <div
-                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  className="rounded-2xl p-5 border"
                   style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Reports</span>
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-500/15">
-                      <AlertTriangle className="w-5 h-5 text-amber-400" />
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>Reports</span>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(245, 158, 11, 0.15)' }}>
+                      <AlertTriangle className="w-4 h-4" style={{ color: '#f59e0b' }} />
                     </div>
                   </div>
-                  <p className="text-3xl font-extrabold mb-2 text-amber-400">
+                  <p className="text-3xl font-black mb-1" style={{ color: '#f59e0b' }}>
                     {stats?.reports?.openReports || 0}
                   </p>
-                  <p className="text-xs font-medium text-slate-400">
+                  <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
                     {stats?.reports?.totalReports || 0} total tickets
                   </p>
                 </div>
               </div>
 
-              {/* Two Column Grid: Recent Orders & Fleet Status */}
+              {/* Two Column Grid: Recent Orders & Fleet Preview */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Recent Orders List (2 Columns) */}
+                {/* Recent Orders List (2 Cols) */}
                 <div
                   className="lg:col-span-2 rounded-2xl p-6 border space-y-4"
                   style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Recent Dispatch Orders</h2>
+                      <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Recent Dispatch Orders</h2>
                       <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Latest booked customer orders</p>
                     </div>
                     <button
                       onClick={() => setActiveTab('orders')}
                       className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
                     >
-                      View Full Dispatch List <ArrowRight className="w-3.5 h-3.5" />
+                      View All Orders <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-left">
                       <thead>
-                        <tr className="border-b text-xs font-bold uppercase text-slate-400" style={{ borderColor: 'var(--border-color)' }}>
+                        <tr className="border-b text-[11px] font-bold uppercase" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
                           <th className="pb-3">Ticket</th>
                           <th className="pb-3">Route</th>
                           <th className="pb-3">Status</th>
@@ -715,16 +658,16 @@ export default function AdminDashboard() {
                           <tr key={order.id} className="hover:bg-slate-500/5 transition-colors">
                             <td className="py-3 font-mono font-bold text-blue-400">{order.ticketId}</td>
                             <td className="py-3 max-w-[200px]">
-                              <p className="font-semibold truncate text-slate-200">{order.pickupAddress?.split(',')[0]}</p>
-                              <p className="text-[11px] truncate text-slate-400">→ {order.dropoffAddress?.split(',')[0]}</p>
+                              <p className="font-bold truncate" style={{ color: 'var(--text-primary)' }}>{order.pickupAddress?.split(',')[0]}</p>
+                              <p className="text-[11px] truncate" style={{ color: 'var(--text-secondary)' }}>→ {order.dropoffAddress?.split(',')[0]}</p>
                             </td>
                             <td className="py-3">{getStatusBadge(order.status)}</td>
-                            <td className="py-3 font-bold text-slate-200">₦{parseFloat(order.totalPrice || 0).toLocaleString()}</td>
+                            <td className="py-3 font-bold" style={{ color: 'var(--text-primary)' }}>₦{parseFloat(order.totalPrice || 0).toLocaleString()}</td>
                             <td className="py-3 text-right">
                               {order.status === 'pending' ? (
                                 <button
                                   onClick={() => setAssignModalOrder(order)}
-                                  className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                                  className="btn btn-primary btn-sm"
                                 >
                                   Assign
                                 </button>
@@ -732,7 +675,7 @@ export default function AdminDashboard() {
                                 <a
                                   href={`/track/${order.ticketId}`}
                                   target="_blank"
-                                  className="text-xs font-bold text-slate-400 hover:text-white"
+                                  className="btn btn-outline btn-sm"
                                 >
                                   Track
                                 </a>
@@ -745,19 +688,20 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                {/* Live Fleet Preview (1 Column) */}
+                {/* Fleet Availability (1 Col) */}
                 <div
                   className="rounded-2xl p-6 border space-y-4"
                   style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Fleet Availability</h2>
+                      <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Fleet Availability</h2>
                       <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Riders ready for dispatch</p>
                     </div>
                     <button
                       onClick={() => setActiveTab('riders')}
                       className="text-xs font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                      style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
                     >
                       Fleet Command <ArrowRight className="w-3.5 h-3.5" />
                     </button>
@@ -767,7 +711,7 @@ export default function AdminDashboard() {
                     {riders.slice(0, 5).map((rider) => (
                       <div
                         key={rider.id}
-                        className="p-3.5 rounded-xl border flex items-center justify-between transition-all hover:border-slate-600"
+                        className="p-3.5 rounded-xl border flex items-center justify-between transition-all"
                         style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
                       >
                         <div className="flex items-center gap-3">
@@ -782,22 +726,16 @@ export default function AdminDashboard() {
                             {rider.fullName?.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-slate-200">{rider.fullName}</p>
-                            <p className="text-[11px] text-slate-400 capitalize">{rider.vehicleType} • {rider.plateNumber || 'No plate'}</p>
+                            <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{rider.fullName}</p>
+                            <p className="text-[11px] capitalize" style={{ color: 'var(--text-secondary)' }}>{rider.vehicleType} • {rider.plateNumber || 'No plate'}</p>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
-                              rider.isOnline
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-slate-500/20 text-slate-400'
-                            }`}
-                          >
-                            {rider.isOnline ? (rider.isBusy ? 'On Job' : 'Online') : 'Offline'}
-                          </span>
-                        </div>
+                        <span
+                          className={`badge ${rider.isOnline ? 'badge-delivered' : 'badge-pending'}`}
+                        >
+                          {rider.isOnline ? (rider.isBusy ? 'On Job' : 'Online') : 'Offline'}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -809,13 +747,13 @@ export default function AdminDashboard() {
           {/* ================= TAB 2: ORDERS ================= */}
           {activeTab === 'orders' && (
             <div className="space-y-6">
-              {/* Order Search & Filters */}
+              {/* Order Search & Status Filter */}
               <div
                 className="rounded-2xl p-5 border flex flex-col md:flex-row items-center justify-between gap-4"
                 style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
               >
                 <div className="relative w-full md:w-96">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
                   <input
                     type="text"
                     value={orderSearch}
@@ -825,21 +763,12 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                {/* Status Tabs */}
                 <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
                   {['all', 'pending', 'assigned', 'accepted', 'picked_up', 'delivered', 'cancelled'].map((status) => (
                     <button
                       key={status}
                       onClick={() => setOrderStatusFilter(status)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize whitespace-nowrap transition-all ${
-                        orderStatusFilter === status
-                          ? 'bg-primary text-white shadow-md'
-                          : 'border text-slate-400 hover:text-white'
-                      }`}
-                      style={{
-                        background: orderStatusFilter === status ? 'var(--primary)' : 'transparent',
-                        borderColor: orderStatusFilter === status ? 'transparent' : 'var(--border-color)',
-                      }}
+                      className={`btn btn-sm capitalize ${orderStatusFilter === status ? 'btn-primary' : 'btn-outline'}`}
                     >
                       {status.replace('_', ' ')}
                     </button>
@@ -853,7 +782,7 @@ export default function AdminDashboard() {
                 style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
               >
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
                     Showing {filteredOrders.length} orders
                   </p>
                 </div>
@@ -861,7 +790,7 @@ export default function AdminDashboard() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="border-b text-xs font-bold uppercase text-slate-400" style={{ borderColor: 'var(--border-color)' }}>
+                      <tr className="border-b text-[11px] font-bold uppercase" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
                         <th className="pb-3">Ticket ID</th>
                         <th className="pb-3">Pickup Address</th>
                         <th className="pb-3">Dropoff Address</th>
@@ -875,9 +804,9 @@ export default function AdminDashboard() {
                     <tbody className="divide-y text-xs" style={{ borderColor: 'var(--border-color)' }}>
                       {filteredOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="py-12 text-center text-slate-400">
+                          <td colSpan={8} className="py-12 text-center" style={{ color: 'var(--text-secondary)' }}>
                             <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                            <p className="font-semibold text-sm">No orders matching your criteria</p>
+                            <p className="font-bold text-sm">No orders matching your criteria</p>
                           </td>
                         </tr>
                       ) : (
@@ -887,30 +816,30 @@ export default function AdminDashboard() {
                               {order.ticketId}
                             </td>
                             <td className="py-4 max-w-[180px]">
-                              <p className="font-semibold truncate text-slate-200">{order.pickupAddress}</p>
-                              {order.senderPhone && <p className="text-[11px] text-slate-400">{order.senderPhone}</p>}
+                              <p className="font-bold truncate" style={{ color: 'var(--text-primary)' }}>{order.pickupAddress}</p>
+                              {order.senderPhone && <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{order.senderPhone}</p>}
                             </td>
                             <td className="py-4 max-w-[180px]">
-                              <p className="font-semibold truncate text-slate-200">{order.dropoffAddress}</p>
-                              {order.recipientPhone && <p className="text-[11px] text-slate-400">{order.recipientPhone}</p>}
+                              <p className="font-bold truncate" style={{ color: 'var(--text-primary)' }}>{order.dropoffAddress}</p>
+                              {order.recipientPhone && <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>{order.recipientPhone}</p>}
                             </td>
                             <td className="py-4">
-                              <p className="font-semibold text-slate-200">{order.recipientName || order.senderName || 'Client'}</p>
+                              <p className="font-bold" style={{ color: 'var(--text-primary)' }}>{order.recipientName || order.senderName || 'Client'}</p>
                             </td>
                             <td className="py-4">
                               {getStatusBadge(order.status)}
                             </td>
-                            <td className="py-4 font-bold text-slate-200">
+                            <td className="py-4 font-bold" style={{ color: 'var(--text-primary)' }}>
                               ₦{parseFloat(order.totalPrice || 0).toLocaleString()}
                             </td>
-                            <td className="py-4 text-slate-400">
+                            <td className="py-4" style={{ color: 'var(--text-secondary)' }}>
                               {new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                             </td>
                             <td className="py-4 text-right space-x-2">
                               {order.status === 'pending' && (
                                 <button
                                   onClick={() => setAssignModalOrder(order)}
-                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-500 text-white hover:bg-blue-600 shadow-sm"
+                                  className="btn btn-primary btn-sm"
                                 >
                                   Assign
                                 </button>
@@ -918,8 +847,7 @@ export default function AdminDashboard() {
                               <a
                                 href={`/track/${order.ticketId}`}
                                 target="_blank"
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border text-slate-300 hover:text-white"
-                                style={{ borderColor: 'var(--border-color)' }}
+                                className="btn btn-outline btn-sm"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                                 Track
@@ -944,7 +872,7 @@ export default function AdminDashboard() {
                 style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
               >
                 <div className="relative w-full md:w-96">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
                   <input
                     type="text"
                     value={riderSearch}
@@ -959,15 +887,7 @@ export default function AdminDashboard() {
                     <button
                       key={status}
                       onClick={() => setRiderStatusFilter(status)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize whitespace-nowrap transition-all ${
-                        riderStatusFilter === status
-                          ? 'bg-primary text-white shadow-md'
-                          : 'border text-slate-400 hover:text-white'
-                      }`}
-                      style={{
-                        background: riderStatusFilter === status ? 'var(--primary)' : 'transparent',
-                        borderColor: riderStatusFilter === status ? 'transparent' : 'var(--border-color)',
-                      }}
+                      className={`btn btn-sm capitalize ${riderStatusFilter === status ? 'btn-primary' : 'btn-outline'}`}
                     >
                       {status}
                     </button>
@@ -978,7 +898,7 @@ export default function AdminDashboard() {
               {/* Rider Fleet Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredRiders.length === 0 ? (
-                  <div className="col-span-full py-16 text-center text-slate-400">
+                  <div className="col-span-full py-16 text-center" style={{ color: 'var(--text-secondary)' }}>
                     <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
                     <p className="font-bold text-base">No riders found</p>
                   </div>
@@ -1002,37 +922,31 @@ export default function AdminDashboard() {
                             {rider.fullName?.charAt(0).toUpperCase()}
                           </div>
                           <div>
-                            <h3 className="font-bold text-sm text-slate-100">{rider.fullName}</h3>
-                            <p className="text-xs text-slate-400">{rider.email}</p>
+                            <h3 className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{rider.fullName}</h3>
+                            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{rider.email}</p>
                           </div>
                         </div>
 
-                        <span
-                          className={`text-xs px-2.5 py-1 rounded-full font-bold ${
-                            rider.isOnline
-                              ? 'bg-green-500/20 text-green-400'
-                              : 'bg-slate-500/20 text-slate-400'
-                          }`}
-                        >
+                        <span className={`badge ${rider.isOnline ? 'badge-delivered' : 'badge-pending'}`}>
                           {rider.isOnline ? 'Online' : 'Offline'}
                         </span>
                       </div>
 
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
-                          <span className="text-slate-400 text-[11px] block">Vehicle</span>
-                          <span className="font-bold text-slate-200 capitalize">{rider.vehicleType || 'Motorcycle'}</span>
+                        <div className="p-3 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                          <span className="text-[11px] block" style={{ color: 'var(--text-secondary)' }}>Vehicle</span>
+                          <span className="font-bold capitalize" style={{ color: 'var(--text-primary)' }}>{rider.vehicleType || 'Motorcycle'}</span>
                         </div>
-                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
-                          <span className="text-slate-400 text-[11px] block">Plate Number</span>
-                          <span className="font-mono font-bold text-slate-200">{rider.plateNumber || 'N/A'}</span>
+                        <div className="p-3 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                          <span className="text-[11px] block" style={{ color: 'var(--text-secondary)' }}>Plate Number</span>
+                          <span className="font-mono font-bold" style={{ color: 'var(--text-primary)' }}>{rider.plateNumber || 'N/A'}</span>
                         </div>
-                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
-                          <span className="text-slate-400 text-[11px] block">Deliveries</span>
+                        <div className="p-3 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                          <span className="text-[11px] block" style={{ color: 'var(--text-secondary)' }}>Deliveries</span>
                           <span className="font-bold text-teal-400">{rider.totalDeliveries || 0} completed</span>
                         </div>
-                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
-                          <span className="text-slate-400 text-[11px] block">Total Earnings</span>
+                        <div className="p-3 rounded-xl border" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                          <span className="text-[11px] block" style={{ color: 'var(--text-secondary)' }}>Total Earnings</span>
                           <span className="font-bold text-pink-400">₦{parseFloat(rider.totalAmount || 0).toLocaleString()}</span>
                         </div>
                       </div>
@@ -1042,8 +956,7 @@ export default function AdminDashboard() {
                         {rider.phone && (
                           <a
                             href={`tel:${rider.phone}`}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border text-slate-200 hover:bg-slate-500/10"
-                            style={{ borderColor: 'var(--border-color)' }}
+                            className="flex-1 btn btn-outline btn-sm"
                           >
                             <Phone className="w-3.5 h-3.5 text-blue-400" />
                             Call
@@ -1052,10 +965,8 @@ export default function AdminDashboard() {
 
                         <button
                           onClick={() => toggleRiderStatus(rider.id, rider.status)}
-                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                            rider.status === 'active'
-                              ? 'border border-red-500/40 text-red-400 hover:bg-red-500/10'
-                              : 'bg-green-600 text-white hover:bg-green-700'
+                          className={`flex-1 btn btn-sm ${
+                            rider.status === 'active' ? 'btn-outline' : 'btn-success'
                           }`}
                         >
                           {rider.status === 'active' ? 'Suspend Rider' : 'Activate Rider'}
@@ -1077,15 +988,15 @@ export default function AdminDashboard() {
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Customer Issue Reports</h2>
+                    <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Customer Issue Reports</h2>
                     <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Feedback and tickets submitted by recipients or senders</p>
                   </div>
                 </div>
 
                 {reportsList.length === 0 ? (
-                  <div className="py-16 text-center text-slate-400">
+                  <div className="py-16 text-center" style={{ color: 'var(--text-secondary)' }}>
                     <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-400 opacity-60" />
-                    <p className="font-bold text-base text-slate-200">No active customer complaints</p>
+                    <p className="font-bold text-base" style={{ color: 'var(--text-primary)' }}>No active customer complaints</p>
                     <p className="text-xs">All packages and deliveries are flowing smoothly.</p>
                   </div>
                 ) : (
@@ -1100,23 +1011,17 @@ export default function AdminDashboard() {
                           <span className="font-mono text-xs font-bold text-blue-400">
                             Ticket: {rep.ticketId || rep.orderId || 'General'}
                           </span>
-                          <span
-                            className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
-                              rep.status === 'resolved'
-                                ? 'bg-green-500/20 text-green-400'
-                                : 'bg-amber-500/20 text-amber-400'
-                            }`}
-                          >
+                          <span className={`badge ${rep.status === 'resolved' ? 'badge-delivered' : 'badge-pending'}`}>
                             {rep.status || 'Pending'}
                           </span>
                         </div>
 
                         <div>
-                          <p className="text-xs font-bold text-slate-200">{rep.issueType || 'Issue Report'}</p>
-                          <p className="text-xs text-slate-300 mt-1">{rep.description || rep.message}</p>
+                          <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{rep.issueType || 'Issue Report'}</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{rep.description || rep.message}</p>
                         </div>
 
-                        <div className="pt-2 border-t flex items-center justify-between text-[11px] text-slate-400" style={{ borderColor: 'var(--border-color)' }}>
+                        <div className="pt-2 border-t flex items-center justify-between text-[11px]" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
                           <span>{rep.createdAt ? new Date(rep.createdAt).toLocaleString() : 'Recent'}</span>
                           {rep.ticketId && (
                             <a
@@ -1144,7 +1049,7 @@ export default function AdminDashboard() {
                 style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
               >
                 <div>
-                  <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Delivery Pricing Formula</h2>
+                  <h2 className="text-xl font-black" style={{ color: 'var(--text-primary)' }}>Delivery Pricing Formula</h2>
                   <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
                     Configure the platform rate matrix across Port Harcourt and surrounding Rivers State corridors.
                   </p>
@@ -1153,7 +1058,7 @@ export default function AdminDashboard() {
                 <form onSubmit={handleSavePricing} className="space-y-5">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Base Fare (₦)</label>
+                      <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>Base Fare (₦)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -1165,7 +1070,7 @@ export default function AdminDashboard() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Per KM Rate (₦)</label>
+                      <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>Per KM Rate (₦)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -1177,7 +1082,7 @@ export default function AdminDashboard() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Minimum Fare (₦)</label>
+                      <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>Minimum Fare (₦)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -1195,8 +1100,8 @@ export default function AdminDashboard() {
                     style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
                   >
                     <div>
-                      <span className="text-xs font-bold text-slate-400 block">Live Price Estimation Example (10 km Delivery)</span>
-                      <p className="text-sm font-bold text-slate-200 mt-0.5">
+                      <span className="text-xs font-bold block" style={{ color: 'var(--text-secondary)' }}>Live Price Estimation Example (10 km Delivery)</span>
+                      <p className="text-sm font-bold mt-0.5" style={{ color: 'var(--text-primary)' }}>
                         Base (₦{pricing.baseFare}) + 10km × ₦{pricing.perKmRate} =
                       </p>
                     </div>
@@ -1222,7 +1127,8 @@ export default function AdminDashboard() {
       {/* ================= ASSIGN RIDER MODAL ================= */}
       {assignModalOrder && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)' }}
           onClick={() => setAssignModalOrder(null)}
         >
           <div
@@ -1232,26 +1138,26 @@ export default function AdminDashboard() {
           >
             <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'var(--border-color)' }}>
               <div>
-                <h3 className="font-bold text-lg text-slate-100">Assign Order Dispatch</h3>
-                <p className="text-xs text-blue-400 font-mono">Ticket #{assignModalOrder.ticketId}</p>
+                <h3 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>Assign Order Dispatch</h3>
+                <p className="text-xs text-blue-400 font-mono font-bold">Ticket #{assignModalOrder.ticketId}</p>
               </div>
-              <button onClick={() => setAssignModalOrder(null)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+              <button onClick={() => setAssignModalOrder(null)} className="p-1 rounded-lg" style={{ color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-4">
-              <div className="p-3 rounded-xl border bg-slate-500/5 text-xs space-y-1" style={{ borderColor: 'var(--border-color)' }}>
-                <p className="font-semibold text-slate-200">From: {assignModalOrder.pickupAddress}</p>
-                <p className="font-semibold text-slate-200">To: {assignModalOrder.dropoffAddress}</p>
+              <div className="p-3.5 rounded-xl border text-xs space-y-1.5" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+                <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>📍 From: {assignModalOrder.pickupAddress}</p>
+                <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>🎯 To: {assignModalOrder.dropoffAddress}</p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Select Available Dispatch Rider</label>
+                <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>Select Available Dispatch Rider</label>
                 <select
                   value={selectedRiderId}
                   onChange={(e) => setSelectedRiderId(e.target.value)}
-                  className="input w-full text-xs font-semibold"
+                  className="input w-full text-xs font-bold"
                 >
                   <option value="">-- Choose Rider --</option>
                   {riders
@@ -1280,7 +1186,8 @@ export default function AdminDashboard() {
       {/* ================= INVITE USER MODAL ================= */}
       {showInviteModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(8px)' }}
           onClick={() => setShowInviteModal(false)}
         >
           <div
@@ -1290,17 +1197,17 @@ export default function AdminDashboard() {
           >
             <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'var(--border-color)' }}>
               <div>
-                <h3 className="font-bold text-lg text-slate-100">Invite New User</h3>
-                <p className="text-xs text-slate-400">Generate secure onboarding link</p>
+                <h3 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>Invite New User</h3>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Generate secure onboarding link</p>
               </div>
-              <button onClick={() => setShowInviteModal(false)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+              <button onClick={() => setShowInviteModal(false)} className="p-1 rounded-lg" style={{ color: 'var(--text-secondary)', background: 'transparent', border: 'none' }}>
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Email Address</label>
+                <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>Email Address</label>
                 <input
                   type="email"
                   value={inviteEmail}
@@ -1312,11 +1219,11 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Role Authority</label>
+                <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>Role Authority</label>
                 <select
                   value={inviteRole}
                   onChange={(e) => setInviteRole(e.target.value)}
-                  className="input w-full text-xs font-semibold"
+                  className="input w-full text-xs font-bold"
                 >
                   <option value="rider">Dispatch Rider</option>
                   <option value="admin">System Administrator</option>
