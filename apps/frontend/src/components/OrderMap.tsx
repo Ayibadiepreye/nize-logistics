@@ -1,76 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-// Fix Leaflet default icon issue
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
-
-// Custom icons
-const createCustomIcon = (color: string) => {
-  return L.divIcon({
-    className: 'custom-marker',
-    html: `
-      <div style="
-        background: ${color};
-        width: 30px;
-        height: 30px;
-        border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg);
-        border: 3px solid white;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      ">
-        <div style="transform: rotate(45deg); color: white; font-size: 14px;">📍</div>
-      </div>
-    `,
-    iconSize: [30, 30],
-    iconAnchor: [15, 30],
-    popupAnchor: [0, -30],
-  });
-};
-
-const pickupIcon = createCustomIcon('#0066ff');
-const dropoffIcon = createCustomIcon('#ff3366');
-
-interface MapUpdaterProps {
-  pickupLat: number;
-  pickupLng: number;
-  dropoffLat: number;
-  dropoffLng: number;
-}
-
-function MapUpdater({ pickupLat, pickupLng, dropoffLat, dropoffLng }: MapUpdaterProps) {
-  const map = useMap();
-
-  useEffect(() => {
-    // Fit map to show both markers
-    const bounds = L.latLngBounds(
-      [pickupLat, pickupLng],
-      [dropoffLat, dropoffLng]
-    );
-    map.fitBounds(bounds, { padding: [50, 50] });
-  }, [pickupLat, pickupLng, dropoffLat, dropoffLng, map]);
-
-  return null;
-}
+import { loadGoogleMaps } from '@/lib/googleMaps';
 
 interface OrderMapProps {
   pickupLat: number;
   pickupLng: number;
   dropoffLat: number;
   dropoffLng: number;
-  pickupAddress: string;
-  dropoffAddress: string;
+  pickupAddress?: string;
+  dropoffAddress?: string;
+  className?: string;
 }
 
 export default function OrderMap({
@@ -80,64 +20,156 @@ export default function OrderMap({
   dropoffLng,
   pickupAddress,
   dropoffAddress,
+  className = '',
 }: OrderMapProps) {
-  const [isClient, setIsClient] = useState(false);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
+  const markersRef = useRef<google.maps.Marker[]>([]);
+  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
+    loadGoogleMaps()
+      .then(() => {
+        if (mapRef.current && !mapInstanceRef.current && window.google?.maps) {
+          const center = {
+            lat: (!isNaN(pickupLat) && !isNaN(dropoffLat)) ? (pickupLat + dropoffLat) / 2 : 4.8156,
+            lng: (!isNaN(pickupLng) && !isNaN(dropoffLng)) ? (pickupLng + dropoffLng) / 2 : 7.0498,
+          };
+
+          mapInstanceRef.current = new google.maps.Map(mapRef.current, {
+            center,
+            zoom: 13,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: true,
+            zoomControl: true,
+            styles: [
+              {
+                featureType: 'poi',
+                elementType: 'labels',
+                stylers: [{ visibility: 'off' }],
+              },
+            ],
+          });
+
+          setIsLoaded(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('Google Maps loader note:', err);
+      });
   }, []);
 
-  if (!isClient) {
-    return (
-      <div style={{ height: '100%', width: '100%', borderRadius: '16px', overflow: 'hidden', background: 'var(--bg-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: 'var(--text-secondary)' }}>Loading map...</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!isLoaded || !mapInstanceRef.current || !window.google?.maps) return;
 
-  const center: [number, number] = [
-    (pickupLat + dropoffLat) / 2,
-    (pickupLng + dropoffLng) / 2,
-  ];
+    const map = mapInstanceRef.current;
 
-  // Create unique key based on coordinates to force remount when they change significantly
-  const mapKey = `map-${pickupLat.toFixed(4)}-${pickupLng.toFixed(4)}-${dropoffLat.toFixed(4)}-${dropoffLng.toFixed(4)}`;
+    // Clear old markers
+    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current = [];
+
+    // Clear old line
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
+
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
+
+    // Pickup
+    if (!isNaN(pickupLat) && !isNaN(pickupLng) && pickupLat !== 0 && pickupLng !== 0) {
+      const pos = { lat: pickupLat, lng: pickupLng };
+      const pickupMarker = new google.maps.Marker({
+        position: pos,
+        map,
+        label: {
+          text: 'A',
+          color: '#ffffff',
+          fontWeight: 'bold',
+        },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 12,
+          fillColor: '#0066ff',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+        },
+        title: pickupAddress || 'Pickup Location',
+      });
+
+      markersRef.current.push(pickupMarker);
+      bounds.extend(pos);
+      hasPoints = true;
+    }
+
+    // Dropoff
+    if (!isNaN(dropoffLat) && !isNaN(dropoffLng) && dropoffLat !== 0 && dropoffLng !== 0) {
+      const pos = { lat: dropoffLat, lng: dropoffLng };
+      const dropoffMarker = new google.maps.Marker({
+        position: pos,
+        map,
+        label: {
+          text: 'B',
+          color: '#ffffff',
+          fontWeight: 'bold',
+        },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 12,
+          fillColor: '#ff3366',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+        },
+        title: dropoffAddress || 'Dropoff Location',
+      });
+
+      markersRef.current.push(dropoffMarker);
+      bounds.extend(pos);
+      hasPoints = true;
+    }
+
+    // Draw route line
+    if (hasPoints && markersRef.current.length >= 2) {
+      const path = [
+        new google.maps.LatLng(pickupLat, pickupLng),
+        new google.maps.LatLng(dropoffLat, dropoffLng),
+      ];
+
+      polylineRef.current = new google.maps.Polyline({
+        path,
+        geodesic: true,
+        strokeColor: '#0066ff',
+        strokeOpacity: 0.85,
+        strokeWeight: 4,
+        map,
+      });
+
+      map.fitBounds(bounds);
+      google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
+        const zoom = map.getZoom();
+        if (zoom && zoom > 15) {
+          map.setZoom(15);
+        }
+      });
+    }
+  }, [isLoaded, pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
   return (
-    <div style={{ height: '100%', width: '100%', borderRadius: '16px', overflow: 'hidden' }}>
-      <MapContainer
-        key={mapKey}
-        center={center}
-        zoom={13}
-        style={{ height: '100%', width: '100%' }}
-        zoomControl={true}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        
-        <Marker position={[pickupLat, pickupLng]} icon={pickupIcon}>
-          <Popup>
-            <strong>📦 Pickup Location</strong><br />
-            {pickupAddress || `${pickupLat.toFixed(4)}, ${pickupLng.toFixed(4)}`}
-          </Popup>
-        </Marker>
-
-        <Marker position={[dropoffLat, dropoffLng]} icon={dropoffIcon}>
-          <Popup>
-            <strong>🎯 Dropoff Location</strong><br />
-            {dropoffAddress || `${dropoffLat.toFixed(4)}, ${dropoffLng.toFixed(4)}`}
-          </Popup>
-        </Marker>
-
-        <MapUpdater
-          pickupLat={pickupLat}
-          pickupLng={pickupLng}
-          dropoffLat={dropoffLat}
-          dropoffLng={dropoffLng}
-        />
-      </MapContainer>
+    <div className={`relative w-full h-full min-h-[300px] ${className}`} style={{ borderRadius: '16px', overflow: 'hidden' }}>
+      <div ref={mapRef} className="w-full h-full min-h-[300px]" />
+      {!isLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--bg-secondary)' }}>
+          <div className="text-center space-y-2">
+            <div className="spinner mx-auto" style={{ width: '32px', height: '32px' }}></div>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Loading Google Maps...</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
