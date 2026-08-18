@@ -1,13 +1,26 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import Navbar from '@/components/Navbar';
+import Link from 'next/link';
 import api from '@/lib/api';
-import { Package, Users, DollarSign, TrendingUp, UserPlus, Mail, Activity, Clock, CheckCircle, XCircle, AlertCircle, ArrowRight, BarChart3, Eye, FileText, AlertTriangle } from 'lucide-react';
+import {
+  Package, Users, DollarSign, TrendingUp, UserPlus, Mail, Activity, Clock,
+  CheckCircle, XCircle, AlertCircle, ArrowRight, BarChart3, Eye, FileText,
+  AlertTriangle, RefreshCw, Search, Filter, ShieldCheck, Settings, LogOut,
+  ChevronRight, Menu, X, Phone, MessageSquare, MapPin, Truck, ExternalLink,
+  Sliders, ArrowUpRight, Check, Sun, Moon
+} from 'lucide-react';
+
+type TabType = 'overview' | 'orders' | 'riders' | 'reports' | 'settings';
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Data States
   const [stats, setStats] = useState<any>({
     orders: {
       totalOrders: 0,
@@ -29,11 +42,35 @@ export default function AdminDashboard() {
   });
   const [orders, setOrders] = useState<any[]>([]);
   const [riders, setRiders] = useState<any[]>([]);
+  const [reportsList, setReportsList] = useState<any[]>([]);
+  const [pricing, setPricing] = useState({
+    baseFare: '500.00',
+    perKmRate: '150.00',
+    minimumFare: '1000.00',
+  });
+
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  // Modals
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('rider');
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  const [assignModalOrder, setAssignModalOrder] = useState<any>(null);
+  const [selectedRiderId, setSelectedRiderId] = useState('');
+  const [assignLoading, setAssignLoading] = useState(false);
+
+  const [savingPricing, setSavingPricing] = useState(false);
+
+  // Filters
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
+  const [riderSearch, setRiderSearch] = useState('');
+  const [riderStatusFilter, setRiderStatusFilter] = useState('all');
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -48,6 +85,7 @@ export default function AdminDashboard() {
         router.push('/');
         return;
       }
+      setCurrentUser(userData);
     } catch {
       router.push('/login');
       return;
@@ -57,37 +95,31 @@ export default function AdminDashboard() {
   }, []);
 
   const loadDashboard = async () => {
+    setRefreshing(true);
     try {
-      const [dashData, ordersData, ridersData] = await Promise.all([
-        api.get('/admin/dashboard').catch(err => {
-          console.error('Admin dashboard stats error:', err);
-          return { data: null };
-        }),
-        api.get('/admin/orders?limit=10').catch(err => {
-          console.error('Admin orders error:', err);
-          return { data: { orders: [] } };
-        }),
-        api.get('/admin/riders').catch(err => {
-          console.error('Admin riders error:', err);
-          return { data: { riders: [] } };
-        }),
+      const [dashRes, ordersRes, ridersRes, reportsRes, pricingRes] = await Promise.all([
+        api.get('/admin/dashboard').catch(() => ({ data: null })),
+        api.get('/admin/orders?limit=100').catch(() => ({ data: { orders: [] } })),
+        api.get('/admin/riders').catch(() => ({ data: { riders: [] } })),
+        api.get('/admin/reports').catch(() => ({ data: { reports: [] } })),
+        api.get('/admin/pricing').catch(() => ({ data: { pricing: null } })),
       ]);
 
-      if (dashData?.data) {
+      if (dashRes?.data) {
         setStats({
-          orders: dashData.data.orders || {
+          orders: dashRes.data.orders || {
             totalOrders: 0,
             pendingOrders: 0,
             activeOrders: 0,
             deliveredOrders: 0,
             totalRevenue: 0,
           },
-          riders: dashData.data.riders || {
+          riders: dashRes.data.riders || {
             totalRiders: 0,
             onlineRiders: 0,
             busyRiders: 0,
           },
-          reports: dashData.data.reports || {
+          reports: dashRes.data.reports || {
             totalReports: 0,
             openReports: 0,
             resolvedReports: 0,
@@ -95,40 +127,60 @@ export default function AdminDashboard() {
         });
       }
 
-      setOrders(ordersData?.data?.orders || []);
-      setRiders(ridersData?.data?.riders || []);
+      setOrders(ordersRes?.data?.orders || []);
+      setRiders(ridersRes?.data?.riders || []);
+      setReportsList(reportsRes?.data?.reports || []);
+
+      if (pricingRes?.data?.pricing) {
+        setPricing({
+          baseFare: pricingRes.data.pricing.baseFare || '500.00',
+          perKmRate: pricingRes.data.pricing.perKmRate || '150.00',
+          minimumFare: pricingRes.data.pricing.minimumFare || '1000.00',
+        });
+      }
+
       setErrorMessage('');
     } catch (error: any) {
       console.error('Failed to load dashboard', error);
       setErrorMessage(error?.response?.data?.error || 'Failed to load dashboard data.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    router.push('/login');
   };
 
   const sendInvite = async () => {
     if (!inviteEmail) {
-      alert('Please enter an email');
+      alert('Please enter an email address');
       return;
     }
 
+    setInviteLoading(true);
     try {
       const { data } = await api.post('/admin/invite', {
         email: inviteEmail,
         role: inviteRole,
       });
 
-      alert(`✅ Invite sent! Signup link: ${data.signupLink}`);
+      alert(`✅ Invite sent successfully!\n\nSignup link: ${data.signupLink}`);
       setInviteEmail('');
       setShowInviteModal(false);
+      loadDashboard();
     } catch (error: any) {
       alert(error.response?.data?.error || 'Failed to send invite');
+    } finally {
+      setInviteLoading(false);
     }
   };
 
   const toggleRiderStatus = async (riderId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'suspended' : 'active';
-    
     if (!confirm(`Are you sure you want to ${newStatus === 'suspended' ? 'suspend' : 'activate'} this rider?`)) {
       return;
     }
@@ -137,502 +189,1152 @@ export default function AdminDashboard() {
       await api.put(`/admin/rider/${riderId}/status`, { status: newStatus });
       loadDashboard();
     } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to update status');
+      alert(error.response?.data?.error || 'Failed to update rider status');
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const assignRiderToOrder = async () => {
+    if (!assignModalOrder || !selectedRiderId) {
+      alert('Please select a rider to assign');
+      return;
+    }
+
+    setAssignLoading(true);
+    try {
+      await api.post(`/admin/order/${assignModalOrder.id}/assign`, { riderId: selectedRiderId });
+      setSuccessMessage(`Order #${assignModalOrder.ticketId} assigned successfully!`);
+      setAssignModalOrder(null);
+      setSelectedRiderId('');
+      loadDashboard();
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to assign order');
+    } finally {
+      setAssignLoading(false);
+    }
+  };
+
+  const handleSavePricing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingPricing(true);
+    try {
+      await api.put('/admin/pricing', pricing);
+      setSuccessMessage('Pricing updated successfully!');
+      setTimeout(() => setSuccessMessage(''), 4000);
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to update pricing');
+    } finally {
+      setSavingPricing(false);
+    }
+  };
+
+  // Filtered Orders
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
+      const matchStatus = orderStatusFilter === 'all' || order.status === orderStatusFilter;
+      const searchLower = orderSearch.toLowerCase();
+      const matchSearch =
+        !orderSearch ||
+        order.ticketId?.toLowerCase().includes(searchLower) ||
+        order.pickupAddress?.toLowerCase().includes(searchLower) ||
+        order.dropoffAddress?.toLowerCase().includes(searchLower) ||
+        order.senderName?.toLowerCase().includes(searchLower) ||
+        order.recipientName?.toLowerCase().includes(searchLower);
+      return matchStatus && matchSearch;
+    });
+  }, [orders, orderStatusFilter, orderSearch]);
+
+  // Filtered Riders
+  const filteredRiders = useMemo(() => {
+    return riders.filter((rider) => {
+      const matchStatus =
+        riderStatusFilter === 'all' ||
+        (riderStatusFilter === 'online' && rider.isOnline) ||
+        (riderStatusFilter === 'offline' && !rider.isOnline) ||
+        (riderStatusFilter === 'suspended' && rider.status === 'suspended') ||
+        (riderStatusFilter === 'active' && rider.status === 'active');
+      const searchLower = riderSearch.toLowerCase();
+      const matchSearch =
+        !riderSearch ||
+        rider.fullName?.toLowerCase().includes(searchLower) ||
+        rider.phone?.toLowerCase().includes(searchLower) ||
+        rider.plateNumber?.toLowerCase().includes(searchLower) ||
+        rider.email?.toLowerCase().includes(searchLower);
+      return matchStatus && matchSearch;
+    });
+  }, [riders, riderStatusFilter, riderSearch]);
+
+  const getStatusBadge = (status: string) => {
     switch (status) {
       case 'delivered':
-        return <CheckCircle className="w-4 h-4" />;
+        return <span className="badge badge-delivered flex items-center gap-1 font-semibold"><CheckCircle className="w-3.5 h-3.5" /> Delivered</span>;
       case 'cancelled':
-        return <XCircle className="w-4 h-4" />;
-      case 'in_transit':
+        return <span className="badge badge-cancelled flex items-center gap-1 font-semibold"><XCircle className="w-3.5 h-3.5" /> Cancelled</span>;
       case 'picked_up':
-        return <Activity className="w-4 h-4" />;
+      case 'in_transit':
+        return <span className="badge badge-picked_up flex items-center gap-1 font-semibold"><Activity className="w-3.5 h-3.5" /> In Transit</span>;
+      case 'accepted':
+      case 'assigned':
+        return <span className="badge badge-accepted flex items-center gap-1 font-semibold"><Clock className="w-3.5 h-3.5" /> Assigned</span>;
+      case 'pending':
       default:
-        return <Clock className="w-4 h-4" />;
+        return <span className="badge badge-pending flex items-center gap-1 font-semibold"><AlertCircle className="w-3.5 h-3.5" /> Pending</span>;
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-        <div className="text-center">
-          <div className="spinner mb-4"></div>
-          <p style={{ color: 'var(--text-secondary)' }}>Loading dashboard...</p>
+        <div className="text-center space-y-4">
+          <div className="spinner mx-auto" style={{ width: '48px', height: '48px' }}></div>
+          <p className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Loading Nize Admin Control Center...</p>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Synchronizing logistics data & dispatch status</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-primary)' }}>
-      <Navbar />
+    <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)' }}>
+      {/* Mobile Sidebar Backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 lg:hidden bg-black/60 backdrop-blur-sm transition-opacity"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
-      <div className="flex-1 p-4 md:p-6 lg:p-8">
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header with Gradient Background */}
-          <div 
-            className="rounded-2xl p-6 md:p-8"
-            style={{
-              background: 'linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)',
-              boxShadow: '0 10px 40px rgba(0, 102, 255, 0.2)'
-            }}
-          >
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">Admin Dashboard</h1>
-                <p className="text-blue-100">Real-time platform overview and management</p>
-              </div>
-              <button 
-                onClick={() => setShowInviteModal(true)} 
-                className="flex items-center gap-2 px-6 py-3 bg-white rounded-xl font-semibold hover:shadow-lg transition-all duration-300"
-                style={{ color: 'var(--primary)' }}
+      {/* ================= SIDEBAR NAVIGATION ================= */}
+      <aside
+        className={`fixed top-0 bottom-0 left-0 z-50 w-72 flex flex-col justify-between transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+        style={{
+          background: 'var(--bg-secondary)',
+          borderRight: '1px solid var(--border-color)',
+        }}
+      >
+        {/* Sidebar Header & Brand */}
+        <div>
+          <div className="p-6 border-b" style={{ borderColor: 'var(--border-color)' }}>
+            <div className="flex items-center justify-between">
+              <Link href="/" className="flex items-center gap-3 group">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105"
+                  style={{
+                    background: 'linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%)',
+                    boxShadow: '0 4px 16px var(--primary-glow)',
+                  }}
+                >
+                  <Truck className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-extrabold text-xl tracking-tight" style={{ color: 'var(--primary)' }}>Nize</span>
+                    <span className="font-bold text-xl tracking-tight" style={{ color: 'var(--accent)' }}>Logistics</span>
+                  </div>
+                  <span className="text-xs font-semibold tracking-wider uppercase opacity-80" style={{ color: 'var(--text-secondary)' }}>
+                    Admin Center
+                  </span>
+                </div>
+              </Link>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white"
               >
-                <UserPlus className="w-5 h-5" />
-                Invite User
+                <X className="w-5 h-5" />
               </button>
             </div>
-          </div>
 
-          {/* Invite Modal */}
-          {showInviteModal && (
-            <div 
-              className="fixed inset-0 z-50 flex items-center justify-center p-4"
-              style={{ background: 'rgba(0, 0, 0, 0.7)' }}
-              onClick={() => setShowInviteModal(false)}
+            {/* Current Admin Badge */}
+            <div
+              className="mt-5 p-3 rounded-xl flex items-center gap-3 border"
+              style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
             >
-              <div 
-                className="w-full max-w-md rounded-2xl p-6"
-                style={{ background: 'var(--bg-card)' }}
-                onClick={(e) => e.stopPropagation()}
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm text-white"
+                style={{ background: 'linear-gradient(135deg, #0066ff 0%, #00d9ff 100%)' }}
               >
-                <div className="flex items-center gap-3 mb-6">
-                  <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: 'var(--primary)', opacity: 0.1 }}
-                  >
-                    <Mail className="w-6 h-6" style={{ color: 'var(--primary)' }} />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Send Invite</h2>
-                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Invite a new admin or rider</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      className="input"
-                      placeholder="user@example.com"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                      Role
-                    </label>
-                    <select
-                      value={inviteRole}
-                      onChange={(e) => setInviteRole(e.target.value)}
-                      className="input"
-                    >
-                      <option value="rider">Rider</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-
-                  <div className="flex gap-3 pt-2">
-                    <button 
-                      onClick={() => setShowInviteModal(false)}
-                      className="flex-1 btn btn-outline"
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={sendInvite}
-                      className="flex-1 btn btn-primary"
-                    >
-                      Send Invite
-                    </button>
-                  </div>
-                </div>
+                {currentUser?.fullName?.charAt(0).toUpperCase() || 'A'}
               </div>
-            </div>
-          )}
-
-          {/* Error Banner if any */}
-          {errorMessage && (
-            <div 
-              className="rounded-xl p-4 flex items-center gap-3"
-              style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}
-            >
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-400">{errorMessage}</p>
-            </div>
-          )}
-
-          {/* Stats Grid with Modern Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-6">
-            {/* Total Orders Card */}
-            <div 
-              className="rounded-2xl p-6 relative overflow-hidden group hover:shadow-2xl transition-all duration-300"
-              style={{ background: 'var(--bg-card)' }}
-            >
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: 'rgba(0, 102, 255, 0.1)' }}
-                  >
-                    <Package className="w-6 h-6" style={{ color: 'var(--primary)' }} />
-                  </div>
-                  <BarChart3 className="w-5 h-5" style={{ color: 'var(--text-secondary)', opacity: 0.5 }} />
-                </div>
-                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Total Orders</p>
-                <p className="text-3xl font-bold mb-2" style={{ color: 'var(--primary)' }}>
-                  {stats?.orders?.totalOrders || 0}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
+                  {currentUser?.fullName || 'Administrator'}
                 </p>
-                <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  <span>Pending: {stats?.orders?.pendingOrders || 0}</span>
-                  <span>•</span>
-                  <span>Active: {stats?.orders?.activeOrders || 0}</span>
-                </div>
-              </div>
-              <div 
-                className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full opacity-5 group-hover:scale-110 transition-transform duration-500"
-                style={{ background: 'var(--primary)' }}
-              ></div>
-            </div>
-
-            {/* Delivered Card */}
-            <div 
-              className="rounded-2xl p-6 relative overflow-hidden group hover:shadow-2xl transition-all duration-300"
-              style={{ background: 'var(--bg-card)' }}
-            >
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: 'rgba(16, 185, 129, 0.1)' }}
-                  >
-                    <CheckCircle className="w-6 h-6 text-teal" />
-                  </div>
-                  <TrendingUp className="w-5 h-5" style={{ color: 'var(--text-secondary)', opacity: 0.5 }} />
-                </div>
-                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Delivered</p>
-                <p className="text-3xl font-bold text-teal">
-                  {stats?.orders?.deliveredOrders || 0}
-                </p>
-              </div>
-              <div 
-                className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full opacity-5 group-hover:scale-110 transition-transform duration-500"
-                style={{ background: '#10b981' }}
-              ></div>
-            </div>
-
-            {/* Revenue Card */}
-            <div 
-              className="rounded-2xl p-6 relative overflow-hidden group hover:shadow-2xl transition-all duration-300"
-              style={{ background: 'linear-gradient(135deg, #ff3366 0%, #ff6699 100%)' }}
-            >
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-white bg-opacity-20">
-                    <DollarSign className="w-6 h-6 text-white" />
-                  </div>
-                  <Activity className="w-5 h-5 text-white opacity-50" />
-                </div>
-                <p className="text-sm font-medium mb-1 text-pink-100">Total Revenue</p>
-                <p className="text-3xl font-bold text-white">
-                  ₦{parseFloat(stats?.orders?.totalRevenue || 0).toLocaleString()}
-                </p>
-              </div>
-            </div>
-
-            {/* Riders Card */}
-            <div 
-              className="rounded-2xl p-6 relative overflow-hidden group hover:shadow-2xl transition-all duration-300"
-              style={{ background: 'var(--bg-card)' }}
-            >
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: 'rgba(139, 92, 246, 0.1)' }}
-                  >
-                    <Users className="w-6 h-6" style={{ color: '#8b5cf6' }} />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  </div>
-                </div>
-                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Active Riders</p>
-                <p className="text-3xl font-bold mb-2" style={{ color: '#8b5cf6' }}>
-                  {stats?.riders?.totalRiders || 0}
-                </p>
-                <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    Online: {stats?.riders?.onlineRiders || 0}
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                  <span className="text-[11px] font-semibold capitalize" style={{ color: 'var(--text-secondary)' }}>
+                    {currentUser?.role?.replace('_', ' ') || 'Admin'}
                   </span>
                 </div>
               </div>
-              <div 
-                className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full opacity-5 group-hover:scale-110 transition-transform duration-500"
-                style={{ background: '#8b5cf6' }}
-              ></div>
             </div>
+          </div>
 
-            {/* Reports Card */}
-            <div 
-              className="rounded-2xl p-6 relative overflow-hidden group hover:shadow-2xl transition-all duration-300"
-              style={{ background: 'var(--bg-card)' }}
+          {/* Navigation Links */}
+          <nav className="p-4 space-y-1.5">
+            <button
+              onClick={() => { setActiveTab('overview'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
+                activeTab === 'overview'
+                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
+                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
+              }`}
+              style={{
+                background: activeTab === 'overview' ? 'var(--primary)' : undefined,
+                color: activeTab === 'overview' ? '#ffffff' : undefined,
+              }}
             >
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-4">
-                  <div 
-                    className="w-12 h-12 rounded-xl flex items-center justify-center"
-                    style={{ background: 'rgba(245, 158, 11, 0.1)' }}
-                  >
-                    <AlertTriangle className="w-6 h-6" style={{ color: '#f59e0b' }} />
+              <div className="flex items-center gap-3">
+                <BarChart3 className="w-5 h-5" />
+                <span>Overview</span>
+              </div>
+              <ChevronRight className={`w-4 h-4 transition-transform ${activeTab === 'overview' ? 'rotate-90' : 'opacity-40'}`} />
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('orders'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
+                activeTab === 'orders'
+                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
+                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
+              }`}
+              style={{
+                background: activeTab === 'orders' ? 'var(--primary)' : undefined,
+                color: activeTab === 'orders' ? '#ffffff' : undefined,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <Package className="w-5 h-5" />
+                <span>Orders</span>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-white/20 font-bold">
+                {stats?.orders?.totalOrders || 0}
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('riders'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
+                activeTab === 'riders'
+                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
+                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
+              }`}
+              style={{
+                background: activeTab === 'riders' ? 'var(--primary)' : undefined,
+                color: activeTab === 'riders' ? '#ffffff' : undefined,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <Users className="w-5 h-5" />
+                <span>Rider Fleet</span>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-bold">
+                {stats?.riders?.onlineRiders || 0} online
+              </span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('reports'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
+                activeTab === 'reports'
+                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
+                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
+              }`}
+              style={{
+                background: activeTab === 'reports' ? 'var(--primary)' : undefined,
+                color: activeTab === 'reports' ? '#ffffff' : undefined,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5" />
+                <span>Issue Reports</span>
+              </div>
+              {(stats?.reports?.openReports || 0) > 0 && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold animate-pulse">
+                  {stats?.reports?.openReports}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('settings'); setSidebarOpen(false); }}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl font-semibold text-sm transition-all duration-200 ${
+                activeTab === 'settings'
+                  ? 'bg-primary text-white shadow-lg shadow-blue-500/20'
+                  : 'hover:bg-slate-500/10 text-slate-400 hover:text-slate-200'
+              }`}
+              style={{
+                background: activeTab === 'settings' ? 'var(--primary)' : undefined,
+                color: activeTab === 'settings' ? '#ffffff' : undefined,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <Sliders className="w-5 h-5" />
+                <span>Pricing & Settings</span>
+              </div>
+            </button>
+          </nav>
+        </div>
+
+        {/* Sidebar Footer Actions */}
+        <div className="p-4 border-t space-y-2" style={{ borderColor: 'var(--border-color)' }}>
+          <Link
+            href="/"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-500/10 transition-all"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>Go to Public Website</span>
+          </Link>
+
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-all"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* ================= MAIN CONTENT AREA ================= */}
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-72">
+        {/* Top Control Bar */}
+        <header
+          className="sticky top-0 z-30 px-4 md:px-8 py-4 backdrop-blur-md border-b flex items-center justify-between gap-4"
+          style={{
+            background: 'var(--bg-card)',
+            borderColor: 'var(--border-color)',
+          }}
+        >
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 rounded-xl border text-slate-300 hover:bg-slate-500/10"
+              style={{ borderColor: 'var(--border-color)' }}
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-xl md:text-2xl font-black capitalize tracking-tight" style={{ color: 'var(--text-primary)' }}>
+                {activeTab === 'overview' && 'Executive Overview'}
+                {activeTab === 'orders' && 'Order Dispatch & Tracking'}
+                {activeTab === 'riders' && 'Rider Fleet Command'}
+                {activeTab === 'reports' && 'Customer Issue Reports'}
+                {activeTab === 'settings' && 'Pricing & Platform Configuration'}
+              </h1>
+              <p className="text-xs hidden sm:block" style={{ color: 'var(--text-secondary)' }}>
+                Real-time Port Harcourt Logistics Control System
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {/* Live Indicator */}
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-semibold"
+                 style={{ background: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.3)', color: '#10b981' }}>
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span>Live System</span>
+            </div>
+
+            {/* Refresh Button */}
+            <button
+              onClick={loadDashboard}
+              disabled={refreshing}
+              className="p-2.5 rounded-xl border hover:bg-slate-500/10 transition-all disabled:opacity-50"
+              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}
+              title="Refresh Dashboard Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* Invite Button */}
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold text-white shadow-lg hover:shadow-xl transition-all"
+              style={{
+                background: 'linear-gradient(135deg, var(--primary) 0%, #0052cc 100%)',
+                boxShadow: '0 4px 16px var(--primary-glow)',
+              }}
+            >
+              <UserPlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Invite User</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Notification Banners */}
+        <div className="p-4 md:p-8 space-y-6">
+          {errorMessage && (
+            <div className="p-4 rounded-xl flex items-center gap-3 border bg-red-500/10 border-red-500/30 text-red-400">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p className="text-sm font-medium">{errorMessage}</p>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="p-4 rounded-xl flex items-center gap-3 border bg-green-500/10 border-green-500/30 text-green-400">
+              <CheckCircle className="w-5 h-5 flex-shrink-0" />
+              <p className="text-sm font-medium">{successMessage}</p>
+            </div>
+          )}
+
+          {/* ================= TAB 1: OVERVIEW ================= */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              {/* 5 Hero KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Total Orders Card */}
+                <div
+                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Orders</span>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(0, 102, 255, 0.15)' }}>
+                      <Package className="w-5 h-5" style={{ color: 'var(--primary)' }} />
+                    </div>
                   </div>
-                  <FileText className="w-5 h-5" style={{ color: 'var(--text-secondary)', opacity: 0.5 }} />
+                  <p className="text-3xl font-extrabold mb-2" style={{ color: 'var(--primary)' }}>
+                    {stats?.orders?.totalOrders || 0}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    <span className="font-semibold text-amber-400">{stats?.orders?.pendingOrders || 0} Pending</span>
+                    <span>•</span>
+                    <span className="font-semibold text-blue-400">{stats?.orders?.activeOrders || 0} Active</span>
+                  </div>
                 </div>
-                <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Issue Reports</p>
-                <p className="text-3xl font-bold mb-2" style={{ color: '#f59e0b' }}>
-                  {stats?.reports?.openReports ?? 0}
-                </p>
-                <div className="flex items-center gap-4 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  <span>Open: {stats?.reports?.openReports ?? 0}</span>
-                  <span>•</span>
-                  <span>Total: {stats?.reports?.totalReports ?? 0}</span>
+
+                {/* Total Revenue Card */}
+                <div
+                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Revenue</span>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-pink-500/15">
+                      <DollarSign className="w-5 h-5 text-pink-500" />
+                    </div>
+                  </div>
+                  <p className="text-3xl font-extrabold mb-2 text-pink-400">
+                    ₦{parseFloat(stats?.orders?.totalRevenue || 0).toLocaleString()}
+                  </p>
+                  <p className="text-xs font-medium text-slate-400">Settled payments</p>
+                </div>
+
+                {/* Delivered Packages */}
+                <div
+                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Delivered</span>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-teal-500/15">
+                      <CheckCircle className="w-5 h-5 text-teal-400" />
+                    </div>
+                  </div>
+                  <p className="text-3xl font-extrabold mb-2 text-teal-400">
+                    {stats?.orders?.deliveredOrders || 0}
+                  </p>
+                  <p className="text-xs font-medium text-slate-400">Successfully completed</p>
+                </div>
+
+                {/* Active Fleet */}
+                <div
+                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Riders</span>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-purple-500/15">
+                      <Users className="w-5 h-5 text-purple-400" />
+                    </div>
+                  </div>
+                  <p className="text-3xl font-extrabold mb-2 text-purple-400">
+                    {stats?.riders?.totalRiders || 0}
+                  </p>
+                  <div className="flex items-center gap-1.5 text-xs text-green-400 font-semibold">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span>{stats?.riders?.onlineRiders || 0} Active Online</span>
+                  </div>
+                </div>
+
+                {/* Issue Reports */}
+                <div
+                  className="rounded-2xl p-5 relative overflow-hidden border group hover:shadow-xl transition-all duration-300"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Reports</span>
+                    <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-500/15">
+                      <AlertTriangle className="w-5 h-5 text-amber-400" />
+                    </div>
+                  </div>
+                  <p className="text-3xl font-extrabold mb-2 text-amber-400">
+                    {stats?.reports?.openReports || 0}
+                  </p>
+                  <p className="text-xs font-medium text-slate-400">
+                    {stats?.reports?.totalReports || 0} total tickets
+                  </p>
                 </div>
               </div>
-              <div 
-                className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full opacity-5 group-hover:scale-110 transition-transform duration-500"
-                style={{ background: '#f59e0b' }}
-              ></div>
-            </div>
-          </div>
 
-          {/* Recent Orders with Modern Table */}
-          <div 
-            className="rounded-2xl p-6 md:p-8"
-            style={{ background: 'var(--bg-card)' }}
-          >
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
-              <div>
-                <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Recent Orders</h2>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Latest delivery requests</p>
-              </div>
-              <button className="flex items-center gap-2 text-sm font-semibold hover:gap-3 transition-all" style={{ color: 'var(--primary)' }}>
-                View All
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+              {/* Two Column Grid: Recent Orders & Fleet Status */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Recent Orders List (2 Columns) */}
+                <div
+                  className="lg:col-span-2 rounded-2xl p-6 border space-y-4"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Recent Dispatch Orders</h2>
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Latest booked customer orders</p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('orders')}
+                      className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                    >
+                      View Full Dispatch List <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
-            <div className="overflow-x-auto -mx-6 md:mx-0">
-              <div className="inline-block min-w-full align-middle">
-                <table className="min-w-full">
-                  <thead>
-                    <tr className="border-b" style={{ borderColor: 'var(--border-color)' }}>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                        Ticket
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                        Route
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                        Status
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                        Price
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                        Date
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-secondary)' }}>
-                          <Package className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                          <p className="text-sm font-medium">No orders found</p>
-                        </td>
-                      </tr>
-                    ) : (
-                      orders.map((order) => (
-                        <tr 
-                          key={order.id} 
-                          className="border-b hover:bg-opacity-50 transition-colors"
-                          style={{ borderColor: 'var(--border-color)' }}
-                        >
-                          <td className="px-4 py-4">
-                            <span className="font-mono font-bold text-sm" style={{ color: 'var(--primary)' }}>
-                              {order.ticketId}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="max-w-xs">
-                              <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                                {order.pickupAddress?.split(',')[0] || 'N/A'}
-                              </p>
-                              <p className="text-xs truncate flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
-                                <ArrowRight className="w-3 h-3" />
-                                {order.dropoffAddress?.split(',')[0] || 'N/A'}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4">
-                            <span className={`badge badge-${order.status || 'pending'} flex items-center gap-1 w-fit`}>
-                              {getStatusIcon(order.status)}
-                              {order.status ? order.status.replace('_', ' ') : 'pending'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
-                            <span className="font-bold" style={{ color: 'var(--text-primary)' }}>
-                              ₦{parseFloat(order.totalPrice || 0).toLocaleString()}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
-                            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                              {order.createdAt ? new Date(order.createdAt).toLocaleDateString('en-US', { 
-                                month: 'short', 
-                                day: 'numeric',
-                                year: 'numeric'
-                              }) : 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4 text-right">
-                            <a
-                              href={`/track/${order.ticketId}`}
-                              target="_blank"
-                              className="inline-flex items-center gap-1 text-sm font-semibold hover:gap-2 transition-all"
-                              style={{ color: 'var(--primary)' }}
-                            >
-                              <Eye className="w-4 h-4" />
-                              View
-                            </a>
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b text-xs font-bold uppercase text-slate-400" style={{ borderColor: 'var(--border-color)' }}>
+                          <th className="pb-3">Ticket</th>
+                          <th className="pb-3">Route</th>
+                          <th className="pb-3">Status</th>
+                          <th className="pb-3">Amount</th>
+                          <th className="pb-3 text-right">Action</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+                      </thead>
+                      <tbody className="divide-y text-xs" style={{ borderColor: 'var(--border-color)' }}>
+                        {orders.slice(0, 6).map((order) => (
+                          <tr key={order.id} className="hover:bg-slate-500/5 transition-colors">
+                            <td className="py-3 font-mono font-bold text-blue-400">{order.ticketId}</td>
+                            <td className="py-3 max-w-[200px]">
+                              <p className="font-semibold truncate text-slate-200">{order.pickupAddress?.split(',')[0]}</p>
+                              <p className="text-[11px] truncate text-slate-400">→ {order.dropoffAddress?.split(',')[0]}</p>
+                            </td>
+                            <td className="py-3">{getStatusBadge(order.status)}</td>
+                            <td className="py-3 font-bold text-slate-200">₦{parseFloat(order.totalPrice || 0).toLocaleString()}</td>
+                            <td className="py-3 text-right">
+                              {order.status === 'pending' ? (
+                                <button
+                                  onClick={() => setAssignModalOrder(order)}
+                                  className="px-3 py-1 rounded-lg text-xs font-bold bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                                >
+                                  Assign
+                                </button>
+                              ) : (
+                                <a
+                                  href={`/track/${order.ticketId}`}
+                                  target="_blank"
+                                  className="text-xs font-bold text-slate-400 hover:text-white"
+                                >
+                                  Track
+                                </a>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
 
-          {/* Riders Grid with Modern Cards */}
-          <div 
-            className="rounded-2xl p-6 md:p-8"
-            style={{ background: 'var(--bg-card)' }}
-          >
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>Rider Fleet</h2>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Manage your delivery riders</p>
-            </div>
+                {/* Live Fleet Preview (1 Column) */}
+                <div
+                  className="rounded-2xl p-6 border space-y-4"
+                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Fleet Availability</h2>
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Riders ready for dispatch</p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('riders')}
+                      className="text-xs font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    >
+                      Fleet Command <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
 
-            {riders.length === 0 ? (
-              <div className="p-8 text-center rounded-xl" style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}>
-                <Users className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm font-medium">No registered riders found</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                {riders.map((rider) => (
-                  <div 
-                    key={rider.id}
-                    className="rounded-xl p-5 border hover:border-opacity-100 hover:shadow-lg transition-all duration-300"
-                    style={{ 
-                      background: 'var(--bg-secondary)',
-                      borderColor: 'var(--border-color)',
-                      borderWidth: '1px'
-                    }}
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg"
-                          style={{ 
-                            background: rider.isOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(156, 163, 175, 0.1)',
-                            color: rider.isOnline ? '#10b981' : '#9ca3af'
-                          }}
-                        >
-                          {rider.fullName?.charAt(0).toUpperCase() || 'R'}
+                  <div className="space-y-3">
+                    {riders.slice(0, 5).map((rider) => (
+                      <div
+                        key={rider.id}
+                        className="p-3.5 rounded-xl border flex items-center justify-between transition-all hover:border-slate-600"
+                        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs text-white"
+                            style={{
+                              background: rider.isOnline
+                                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                                : 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
+                            }}
+                          >
+                            {rider.fullName?.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-200">{rider.fullName}</p>
+                            <p className="text-[11px] text-slate-400 capitalize">{rider.vehicleType} • {rider.plateNumber || 'No plate'}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-bold" style={{ color: 'var(--text-primary)' }}>{rider.fullName || 'Unnamed Rider'}</p>
-                          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{rider.phone || 'No phone'}</p>
+
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                              rider.isOnline
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-slate-500/20 text-slate-400'
+                            }`}
+                          >
+                            {rider.isOnline ? (rider.isBusy ? 'On Job' : 'Online') : 'Offline'}
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {rider.isOnline && (
-                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                        )}
-                        <span className={`badge text-xs ${rider.isOnline ? 'badge-picked_up' : 'badge-pending'}`}>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB 2: ORDERS ================= */}
+          {activeTab === 'orders' && (
+            <div className="space-y-6">
+              {/* Order Search & Filters */}
+              <div
+                className="rounded-2xl p-5 border flex flex-col md:flex-row items-center justify-between gap-4"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="relative w-full md:w-96">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    placeholder="Search ticket ID, address, client..."
+                    className="input pl-10 text-xs w-full"
+                  />
+                </div>
+
+                {/* Status Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
+                  {['all', 'pending', 'assigned', 'accepted', 'picked_up', 'delivered', 'cancelled'].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setOrderStatusFilter(status)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize whitespace-nowrap transition-all ${
+                        orderStatusFilter === status
+                          ? 'bg-primary text-white shadow-md'
+                          : 'border text-slate-400 hover:text-white'
+                      }`}
+                      style={{
+                        background: orderStatusFilter === status ? 'var(--primary)' : 'transparent',
+                        borderColor: orderStatusFilter === status ? 'transparent' : 'var(--border-color)',
+                      }}
+                    >
+                      {status.replace('_', ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Comprehensive Orders Table */}
+              <div
+                className="rounded-2xl p-6 border space-y-4"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Showing {filteredOrders.length} orders
+                  </p>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b text-xs font-bold uppercase text-slate-400" style={{ borderColor: 'var(--border-color)' }}>
+                        <th className="pb-3">Ticket ID</th>
+                        <th className="pb-3">Pickup Address</th>
+                        <th className="pb-3">Dropoff Address</th>
+                        <th className="pb-3">Client Contact</th>
+                        <th className="pb-3">Status</th>
+                        <th className="pb-3">Total Amount</th>
+                        <th className="pb-3">Date</th>
+                        <th className="pb-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-xs" style={{ borderColor: 'var(--border-color)' }}>
+                      {filteredOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="py-12 text-center text-slate-400">
+                            <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                            <p className="font-semibold text-sm">No orders matching your criteria</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredOrders.map((order) => (
+                          <tr key={order.id} className="hover:bg-slate-500/5 transition-colors">
+                            <td className="py-4 font-mono font-bold text-blue-400">
+                              {order.ticketId}
+                            </td>
+                            <td className="py-4 max-w-[180px]">
+                              <p className="font-semibold truncate text-slate-200">{order.pickupAddress}</p>
+                              {order.senderPhone && <p className="text-[11px] text-slate-400">{order.senderPhone}</p>}
+                            </td>
+                            <td className="py-4 max-w-[180px]">
+                              <p className="font-semibold truncate text-slate-200">{order.dropoffAddress}</p>
+                              {order.recipientPhone && <p className="text-[11px] text-slate-400">{order.recipientPhone}</p>}
+                            </td>
+                            <td className="py-4">
+                              <p className="font-semibold text-slate-200">{order.recipientName || order.senderName || 'Client'}</p>
+                            </td>
+                            <td className="py-4">
+                              {getStatusBadge(order.status)}
+                            </td>
+                            <td className="py-4 font-bold text-slate-200">
+                              ₦{parseFloat(order.totalPrice || 0).toLocaleString()}
+                            </td>
+                            <td className="py-4 text-slate-400">
+                              {new Date(order.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </td>
+                            <td className="py-4 text-right space-x-2">
+                              {order.status === 'pending' && (
+                                <button
+                                  onClick={() => setAssignModalOrder(order)}
+                                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-blue-500 text-white hover:bg-blue-600 shadow-sm"
+                                >
+                                  Assign
+                                </button>
+                              )}
+                              <a
+                                href={`/track/${order.ticketId}`}
+                                target="_blank"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold border text-slate-300 hover:text-white"
+                                style={{ borderColor: 'var(--border-color)' }}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                Track
+                              </a>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB 3: RIDERS ================= */}
+          {activeTab === 'riders' && (
+            <div className="space-y-6">
+              {/* Rider Filters */}
+              <div
+                className="rounded-2xl p-5 border flex flex-col md:flex-row items-center justify-between gap-4"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="relative w-full md:w-96">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={riderSearch}
+                    onChange={(e) => setRiderSearch(e.target.value)}
+                    placeholder="Search rider name, phone, plate..."
+                    className="input pl-10 text-xs w-full"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {['all', 'online', 'offline', 'suspended'].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setRiderStatusFilter(status)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize whitespace-nowrap transition-all ${
+                        riderStatusFilter === status
+                          ? 'bg-primary text-white shadow-md'
+                          : 'border text-slate-400 hover:text-white'
+                      }`}
+                      style={{
+                        background: riderStatusFilter === status ? 'var(--primary)' : 'transparent',
+                        borderColor: riderStatusFilter === status ? 'transparent' : 'var(--border-color)',
+                      }}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rider Fleet Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredRiders.length === 0 ? (
+                  <div className="col-span-full py-16 text-center text-slate-400">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                    <p className="font-bold text-base">No riders found</p>
+                  </div>
+                ) : (
+                  filteredRiders.map((rider) => (
+                    <div
+                      key={rider.id}
+                      className="rounded-2xl p-6 border space-y-4 hover:shadow-xl transition-all duration-300"
+                      style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base text-white shadow-md"
+                            style={{
+                              background: rider.isOnline
+                                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                                : 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
+                            }}
+                          >
+                            {rider.fullName?.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-sm text-slate-100">{rider.fullName}</h3>
+                            <p className="text-xs text-slate-400">{rider.email}</p>
+                          </div>
+                        </div>
+
+                        <span
+                          className={`text-xs px-2.5 py-1 rounded-full font-bold ${
+                            rider.isOnline
+                              ? 'bg-green-500/20 text-green-400'
+                              : 'bg-slate-500/20 text-slate-400'
+                          }`}
+                        >
                           {rider.isOnline ? 'Online' : 'Offline'}
                         </span>
                       </div>
-                    </div>
 
-                    <div className="space-y-3 mb-4">
-                      <div 
-                        className="flex items-center justify-between p-3 rounded-lg"
-                        style={{ background: 'var(--bg-primary)' }}
-                      >
-                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Vehicle</span>
-                        <span className="text-sm font-bold capitalize" style={{ color: 'var(--text-primary)' }}>
-                          {rider.vehicleType || 'Motorcycle'}
-                        </span>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
+                          <span className="text-slate-400 text-[11px] block">Vehicle</span>
+                          <span className="font-bold text-slate-200 capitalize">{rider.vehicleType || 'Motorcycle'}</span>
+                        </div>
+                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
+                          <span className="text-slate-400 text-[11px] block">Plate Number</span>
+                          <span className="font-mono font-bold text-slate-200">{rider.plateNumber || 'N/A'}</span>
+                        </div>
+                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
+                          <span className="text-slate-400 text-[11px] block">Deliveries</span>
+                          <span className="font-bold text-teal-400">{rider.totalDeliveries || 0} completed</span>
+                        </div>
+                        <div className="p-3 rounded-xl border bg-slate-500/5" style={{ borderColor: 'var(--border-color)' }}>
+                          <span className="text-slate-400 text-[11px] block">Total Earnings</span>
+                          <span className="font-bold text-pink-400">₦{parseFloat(rider.totalAmount || 0).toLocaleString()}</span>
+                        </div>
                       </div>
-                      <div 
-                        className="flex items-center justify-between p-3 rounded-lg"
-                        style={{ background: 'var(--bg-primary)' }}
-                      >
-                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Plate Number</span>
-                        <span className="text-sm font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                          {rider.plateNumber || 'N/A'}
-                        </span>
-                      </div>
-                      <div 
-                        className="flex items-center justify-between p-3 rounded-lg"
-                        style={{ background: 'var(--bg-primary)' }}
-                      >
-                        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Total Deliveries</span>
-                        <span className="text-sm font-bold text-teal">
-                          {rider.totalDeliveries || 0}
-                        </span>
+
+                      {/* Contact & Status Actions */}
+                      <div className="pt-2 flex items-center gap-2">
+                        {rider.phone && (
+                          <a
+                            href={`tel:${rider.phone}`}
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border text-slate-200 hover:bg-slate-500/10"
+                            style={{ borderColor: 'var(--border-color)' }}
+                          >
+                            <Phone className="w-3.5 h-3.5 text-blue-400" />
+                            Call
+                          </a>
+                        )}
+
+                        <button
+                          onClick={() => toggleRiderStatus(rider.id, rider.status)}
+                          className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                            rider.status === 'active'
+                              ? 'border border-red-500/40 text-red-400 hover:bg-red-500/10'
+                              : 'bg-green-600 text-white hover:bg-green-700'
+                          }`}
+                        >
+                          {rider.status === 'active' ? 'Suspend Rider' : 'Activate Rider'}
+                        </button>
                       </div>
                     </div>
-
-                    <button
-                      onClick={() => toggleRiderStatus(rider.id, rider.status)}
-                      className={`btn w-full ${
-                        rider.status === 'active' ? 'btn-outline' : 'btn-primary'
-                      }`}
-                    >
-                      {rider.status === 'active' ? 'Suspend Rider' : 'Activate Rider'}
-                    </button>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* ================= TAB 4: REPORTS ================= */}
+          {activeTab === 'reports' && (
+            <div className="space-y-6">
+              <div
+                className="rounded-2xl p-6 border space-y-4"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Customer Issue Reports</h2>
+                    <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Feedback and tickets submitted by recipients or senders</p>
+                  </div>
+                </div>
+
+                {reportsList.length === 0 ? (
+                  <div className="py-16 text-center text-slate-400">
+                    <CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-400 opacity-60" />
+                    <p className="font-bold text-base text-slate-200">No active customer complaints</p>
+                    <p className="text-xs">All packages and deliveries are flowing smoothly.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {reportsList.map((rep) => (
+                      <div
+                        key={rep.id}
+                        className="rounded-xl p-5 border space-y-3"
+                        style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-blue-400">
+                            Ticket: {rep.ticketId || rep.orderId || 'General'}
+                          </span>
+                          <span
+                            className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                              rep.status === 'resolved'
+                                ? 'bg-green-500/20 text-green-400'
+                                : 'bg-amber-500/20 text-amber-400'
+                            }`}
+                          >
+                            {rep.status || 'Pending'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <p className="text-xs font-bold text-slate-200">{rep.issueType || 'Issue Report'}</p>
+                          <p className="text-xs text-slate-300 mt-1">{rep.description || rep.message}</p>
+                        </div>
+
+                        <div className="pt-2 border-t flex items-center justify-between text-[11px] text-slate-400" style={{ borderColor: 'var(--border-color)' }}>
+                          <span>{rep.createdAt ? new Date(rep.createdAt).toLocaleString() : 'Recent'}</span>
+                          {rep.ticketId && (
+                            <a
+                              href={`/track/${rep.ticketId}`}
+                              target="_blank"
+                              className="text-blue-400 hover:underline flex items-center gap-1 font-semibold"
+                            >
+                              Inspect Order <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ================= TAB 5: SETTINGS & PRICING ================= */}
+          {activeTab === 'settings' && (
+            <div className="max-w-3xl space-y-6">
+              <div
+                className="rounded-2xl p-6 md:p-8 border space-y-6"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+              >
+                <div>
+                  <h2 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>Delivery Pricing Formula</h2>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                    Configure the platform rate matrix across Port Harcourt and surrounding Rivers State corridors.
+                  </p>
+                </div>
+
+                <form onSubmit={handleSavePricing} className="space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Base Fare (₦)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={pricing.baseFare}
+                        onChange={(e) => setPricing({ ...pricing, baseFare: e.target.value })}
+                        className="input font-mono font-bold text-sm w-full"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Per KM Rate (₦)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={pricing.perKmRate}
+                        onChange={(e) => setPricing({ ...pricing, perKmRate: e.target.value })}
+                        className="input font-mono font-bold text-sm w-full"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Minimum Fare (₦)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={pricing.minimumFare}
+                        onChange={(e) => setPricing({ ...pricing, minimumFare: e.target.value })}
+                        className="input font-mono font-bold text-sm w-full"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Pricing Simulation Preview */}
+                  <div
+                    className="p-5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-4"
+                    style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+                  >
+                    <div>
+                      <span className="text-xs font-bold text-slate-400 block">Live Price Estimation Example (10 km Delivery)</span>
+                      <p className="text-sm font-bold text-slate-200 mt-0.5">
+                        Base (₦{pricing.baseFare}) + 10km × ₦{pricing.perKmRate} =
+                      </p>
+                    </div>
+                    <span className="text-2xl font-black text-green-400">
+                      ₦{Math.max(parseFloat(pricing.minimumFare || '0'), parseFloat(pricing.baseFare || '0') + (10 * parseFloat(pricing.perKmRate || '0'))).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={savingPricing}
+                    className="btn btn-primary w-full py-3.5 font-bold shadow-lg"
+                  >
+                    {savingPricing ? 'Updating Pricing Matrix...' : 'Save Pricing Configuration'}
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ================= ASSIGN RIDER MODAL ================= */}
+      {assignModalOrder && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => setAssignModalOrder(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 border space-y-5"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'var(--border-color)' }}>
+              <div>
+                <h3 className="font-bold text-lg text-slate-100">Assign Order Dispatch</h3>
+                <p className="text-xs text-blue-400 font-mono">Ticket #{assignModalOrder.ticketId}</p>
+              </div>
+              <button onClick={() => setAssignModalOrder(null)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 rounded-xl border bg-slate-500/5 text-xs space-y-1" style={{ borderColor: 'var(--border-color)' }}>
+                <p className="font-semibold text-slate-200">From: {assignModalOrder.pickupAddress}</p>
+                <p className="font-semibold text-slate-200">To: {assignModalOrder.dropoffAddress}</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Select Available Dispatch Rider</label>
+                <select
+                  value={selectedRiderId}
+                  onChange={(e) => setSelectedRiderId(e.target.value)}
+                  className="input w-full text-xs font-semibold"
+                >
+                  <option value="">-- Choose Rider --</option>
+                  {riders
+                    .filter((r) => r.status === 'active')
+                    .map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.fullName} ({r.isOnline ? '🟢 Online' : '⚪ Offline'}) - {r.vehicleType || 'Bike'}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setAssignModalOrder(null)} className="flex-1 btn btn-outline">
+                  Cancel
+                </button>
+                <button onClick={assignRiderToOrder} disabled={assignLoading || !selectedRiderId} className="flex-1 btn btn-primary">
+                  {assignLoading ? 'Dispatching...' : 'Confirm Dispatch'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= INVITE USER MODAL ================= */}
+      {showInviteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+          onClick={() => setShowInviteModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 border space-y-5"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'var(--border-color)' }}>
+              <div>
+                <h3 className="font-bold text-lg text-slate-100">Invite New User</h3>
+                <p className="text-xs text-slate-400">Generate secure onboarding link</p>
+              </div>
+              <button onClick={() => setShowInviteModal(false)} className="p-1 rounded-lg text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Email Address</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  className="input w-full text-xs"
+                  placeholder="name@company.com"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase mb-2 text-slate-300">Role Authority</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="input w-full text-xs font-semibold"
+                >
+                  <option value="rider">Dispatch Rider</option>
+                  <option value="admin">System Administrator</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowInviteModal(false)} className="flex-1 btn btn-outline">
+                  Cancel
+                </button>
+                <button onClick={sendInvite} disabled={inviteLoading} className="flex-1 btn btn-primary">
+                  {inviteLoading ? 'Sending...' : 'Send Invitation'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

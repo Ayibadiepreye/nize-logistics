@@ -122,6 +122,16 @@ router.post('/invite', authenticate, requireRole(['admin', 'super_admin']), asyn
   }
 });
 
+// Get pricing config
+router.get('/pricing', authenticate, requireRole(['admin', 'super_admin']), async (req, res, next) => {
+  try {
+    const [config] = await db.select().from(pricingConfig).where(eq(pricingConfig.id, 1));
+    res.json({ pricing: config || { baseFare: '500.00', perKmRate: '150.00', minimumFare: '1000.00' } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Update pricing config
 router.put('/pricing', authenticate, requireRole(['admin', 'super_admin']), async (req, res, next) => {
   try {
