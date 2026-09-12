@@ -5,6 +5,7 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { emitToOrder, emitToUser } from '../socket/index.js';
 import { sendEmail } from '../lib/email.js';
+import { getDistanceMatrix } from '../lib/google-maps.js';
 
 const router = express.Router();
 
@@ -96,7 +97,7 @@ router.post('/accept/:orderId', authenticate, requireRole(['rider']), async (req
 router.post('/pickup/:orderId', authenticate, requireRole(['rider']), async (req, res, next) => {
   try {
     const { orderId } = req.params;
-    const { estimatedDeliveryTime } = req.body;
+    let { estimatedDeliveryTime } = req.body;
 
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
 
@@ -104,19 +105,73 @@ router.post('/pickup/:orderId', authenticate, requireRole(['rider']), async (req
       return res.status(400).json({ error: 'Invalid order' });
     }
 
+    // If estimated delivery time not provided, calculate using Google Maps
+    if (!estimatedDeliveryTime && order.dropoffLat && order.dropoffLng) {
+      try {
+        const origin = (order.pickupLat && order.pickupLng)
+          ? { lat: parseFloat(order.pickupLat), lng: parseFloat(order.pickupLng) }
+          : (req.user.currentLat && req.user.currentLng
+              ? { lat: parseFloat(req.user.currentLat), lng: parseFloat(req.user.currentLng) }
+              : null);
+
+        if (origin) {
+          const destination = { lat: parseFloat(order.dropoffLat), lng: parseFloat(order.dropoffLng) };
+          const distanceData = await getDistanceMatrix(origin, destination);
+          if (distanceData?.durationMinutes) {
+            // Add 10-minute traffic/handover buffer
+            estimatedDeliveryTime = new Date(Date.now() + (distanceData.durationMinutes + 10) * 60 * 1000);
+          }
+        }
+      } catch (calcErr) {
+        console.warn('Could not calculate delivery time on pickup:', calcErr.message);
+      }
+    }
+
     await db.update(orders).set({
       status: 'picked_up',
       pickedUpAt: new Date(),
-      estimatedDeliveryTime: estimatedDeliveryTime || null,
+      estimatedDeliveryTime: estimatedDeliveryTime ? new Date(estimatedDeliveryTime) : null,
     }).where(eq(orders.id, orderId));
 
     req.app.get('io').to(`order:${orderId}`).emit('order:status-update', {
       orderId,
       status: 'picked_up',
+      estimatedDeliveryTime,
       timestamp: new Date().toISOString(),
     });
 
-    res.json({ success: true });
+    res.json({ success: true, estimatedDeliveryTime });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update rider location (REST route)
+router.post('/location', authenticate, requireRole(['rider']), async (req, res, next) => {
+  try {
+    const { lat, lng, orderId } = req.body;
+
+    if (!lat || !lng || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) {
+      return res.status(400).json({ error: 'Valid lat and lng required' });
+    }
+
+    await db.update(users).set({
+      currentLat: parseFloat(lat).toFixed(7),
+      currentLng: parseFloat(lng).toFixed(7),
+      lastSeen: new Date(),
+    }).where(eq(users.id, req.user.id));
+
+    const io = req.app.get('io');
+    if (io && orderId) {
+      io.to(`order:${orderId}`).emit('rider:location-update', {
+        riderId: req.user.id,
+        lat: parseFloat(lat),
+        lng: parseFloat(lng),
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    res.json({ success: true, message: 'Location updated' });
   } catch (error) {
     next(error);
   }

@@ -23,7 +23,18 @@ app.use(cors({
   credentials: true,
 }));
 app.use(morgan('dev'));
-app.use(express.json({ limit: '10mb' }));
+
+// Capture raw body for Paystack webhook HMAC verification
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    // Store raw body for webhook signature verification
+    if (req.url === '/api/paystack/webhook' || req.originalUrl === '/api/paystack/webhook' || req.url?.includes('/paystack/webhook')) {
+      req.rawBody = buf.toString();
+    }
+  },
+}));
+
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
@@ -32,7 +43,8 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    service: 'Nize Logistics API'
+    service: 'Nize Logistics API',
+    googleMaps: !!process.env.GOOGLE_MAPS_API_KEY,
   });
 });
 
@@ -69,6 +81,9 @@ import superAdminRouter from './routes/superAdmin.js';
 import recipientRouter from './routes/recipient.js';
 import paystackRouter from './routes/paystack.js';
 import uploadRouter from './routes/upload.js';
+import refundsRouter from './routes/refunds.js';
+import pricingRouter from './routes/pricing.js';
+import locationRouter from './routes/location.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/orders', ordersRouter);
@@ -79,9 +94,9 @@ app.use('/api/super', superAdminRouter);
 app.use('/api/recipient', recipientRouter);
 app.use('/api/paystack', paystackRouter);
 app.use('/api/upload', uploadRouter);
-
-import refundsRouter from './routes/refunds.js';
 app.use('/api/refunds', refundsRouter);
+app.use('/api/pricing', pricingRouter);
+app.use('/api/location', locationRouter);
 
 // ===== ERROR HANDLER =====
 app.use((err, req, res, next) => {
@@ -113,8 +128,9 @@ async function start() {
     console.log(`\n🚀 Nize Logistics API running on port ${PORT}`);
     console.log(`📡 Socket.io ready for real-time updates`);
     console.log(`🌍 Frontend: ${process.env.FRONTEND_URL}`);
+    console.log(`🗺️  Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? 'Configured' : 'Not configured'}`);
     console.log(`💳 Paystack: ${process.env.PAYSTACK_PUBLIC_KEY ? 'Configured' : 'Not configured'}`);
-    console.log(`📧 Email: ${process.env.EMAIL_SERVICE} (${process.env.EMAIL_FROM})`);
+    console.log(`📧 Email: ${process.env.EMAIL_SERVICE || 'smtp'} (${process.env.EMAIL_FROM})`);
     console.log(`\n...Plenty Waka 🚚\n`);
   });
   

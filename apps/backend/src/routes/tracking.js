@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../lib/db/index.js';
 import { orders, users } from '../lib/db/schema.js';
 import { eq } from 'drizzle-orm';
+import { getDirections } from '../lib/google-maps.js';
 
 const router = express.Router();
 
@@ -33,8 +34,29 @@ router.get('/:ticketId', async (req, res, next) => {
       riderData = rider;
     }
 
+    // Get route directions for map polyline
+    let routeData = null;
+    if (order.pickupLat && order.pickupLng && order.dropoffLat && order.dropoffLng) {
+      try {
+        const directions = await getDirections(
+          { lat: parseFloat(order.pickupLat), lng: parseFloat(order.pickupLng) },
+          { lat: parseFloat(order.dropoffLat), lng: parseFloat(order.dropoffLng) }
+        );
+        if (directions) {
+          routeData = {
+            polyline: directions.polyline,
+            distanceText: directions.distanceText,
+            durationText: directions.durationText,
+          };
+        }
+      } catch (err) {
+        // Directions not critical for tracking, continue without
+      }
+    }
+
     res.json({
       order: {
+        id: order.id,
         ticketId: order.ticketId,
         status: order.status,
         pickupAddress: order.pickupAddress,
@@ -53,8 +75,10 @@ router.get('/:ticketId', async (req, res, next) => {
         pickedUpAt: order.pickedUpAt,
         deliveredAt: order.deliveredAt,
         estimatedDeliveryTime: order.estimatedDeliveryTime,
+        description: order.description,
       },
       rider: riderData,
+      route: routeData,
     });
   } catch (error) {
     next(error);

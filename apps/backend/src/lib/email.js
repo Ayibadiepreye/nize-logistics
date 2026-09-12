@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 
 const service = process.env.EMAIL_SERVICE || 'smtp';
+console.log(`📧 Email service configured: ${service}`);
 
 // SMTP Transport (Mailjet or generic)
 const smtpTransport = nodemailer.createTransport({

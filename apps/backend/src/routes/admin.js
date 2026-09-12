@@ -105,7 +105,7 @@ router.post('/invite', authenticate, requireRole(['admin', 'super_admin']), asyn
       role,
       token,
       expiresAt,
-      invitedBy: req.user.id,
+      createdBy: req.user.id,
     }).returning();
 
     // Send invite email

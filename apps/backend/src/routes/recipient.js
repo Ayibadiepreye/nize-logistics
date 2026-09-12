@@ -60,7 +60,8 @@ router.post('/:token/report', async (req, res, next) => {
 
     const [report] = await db.insert(reports).values({
       orderId: order.id,
-      reportType: type,
+      type,
+      reporterRole: 'rider', // Using 'rider' as closest match; recipient is external
       description,
       status: 'pending',
     }).returning();

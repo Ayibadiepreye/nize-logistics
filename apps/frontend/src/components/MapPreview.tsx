@@ -22,7 +22,9 @@ export default function MapPreview({
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
 
   // Initialize map once
   useEffect(() => {
@@ -34,6 +36,10 @@ export default function MapPreview({
           mapInstanceRef.current = new google.maps.Map(mapRef.current, {
             center,
             zoom: 12,
+            mapTypeControl: false,
+            streetViewControl: false,
+            fullscreenControl: true,
+            zoomControl: true,
             styles: [
               {
                 featureType: 'poi',
@@ -51,7 +57,7 @@ export default function MapPreview({
       });
   }, []);
 
-  // Update markers when coordinates change
+  // Update markers and route when coordinates change
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current) return;
 
@@ -69,11 +75,21 @@ export default function MapPreview({
       polylineRef.current = null;
     }
 
+    // Clear existing directions
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+      directionsRendererRef.current = null;
+    }
+
+    setRouteInfo(null);
+
     const bounds = new google.maps.LatLngBounds();
     let hasValidPoints = false;
+    const hasPickup = pickupLat && pickupLng && !isNaN(pickupLat) && !isNaN(pickupLng);
+    const hasDropoff = dropoffLat && dropoffLng && !isNaN(dropoffLat) && !isNaN(dropoffLng);
 
     // Add pickup marker
-    if (pickupLat && pickupLng && !isNaN(pickupLat) && !isNaN(pickupLng)) {
+    if (hasPickup) {
       const pickupMarker = new google.maps.Marker({
         position: { lat: pickupLat, lng: pickupLng },
         map: map,
@@ -99,7 +115,7 @@ export default function MapPreview({
     }
 
     // Add dropoff marker
-    if (dropoffLat && dropoffLng && !isNaN(dropoffLat) && !isNaN(dropoffLng)) {
+    if (hasDropoff) {
       const dropoffMarker = new google.maps.Marker({
         position: { lat: dropoffLat, lng: dropoffLng },
         map: map,
@@ -124,31 +140,62 @@ export default function MapPreview({
       hasValidPoints = true;
     }
 
-    // Draw line between points
-    if (
-      pickupLat && pickupLng && dropoffLat && dropoffLng &&
-      !isNaN(pickupLat) && !isNaN(pickupLng) && !isNaN(dropoffLat) && !isNaN(dropoffLng)
-    ) {
-      const path = [
-        new google.maps.LatLng(pickupLat, pickupLng),
-        new google.maps.LatLng(dropoffLat, dropoffLng)
-      ];
-      
-      polylineRef.current = new google.maps.Polyline({
-        path: path,
-        geodesic: true,
-        strokeColor: '#1E5BBA',
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-        map: map
+    // Use Directions Service for road-following route
+    if (hasPickup && hasDropoff) {
+      const directionsService = new google.maps.DirectionsService();
+      const directionsRenderer = new google.maps.DirectionsRenderer({
+        map,
+        suppressMarkers: true, // We draw our own markers
+        polylineOptions: {
+          strokeColor: '#1E5BBA',
+          strokeOpacity: 0.85,
+          strokeWeight: 4,
+        },
       });
+
+      directionsService.route(
+        {
+          origin: { lat: pickupLat!, lng: pickupLng! },
+          destination: { lat: dropoffLat!, lng: dropoffLng! },
+          travelMode: google.maps.TravelMode.DRIVING,
+        },
+        (result, status) => {
+          if (status === google.maps.DirectionsStatus.OK && result) {
+            directionsRenderer.setDirections(result);
+            directionsRendererRef.current = directionsRenderer;
+
+            // Extract route info
+            const leg = result.routes?.[0]?.legs?.[0];
+            if (leg) {
+              setRouteInfo({
+                distance: leg.distance?.text || '',
+                duration: leg.duration?.text || '',
+              });
+            }
+          } else {
+            // Fallback: straight line
+            const path = [
+              new google.maps.LatLng(pickupLat!, pickupLng!),
+              new google.maps.LatLng(dropoffLat!, dropoffLng!)
+            ];
+            
+            polylineRef.current = new google.maps.Polyline({
+              path,
+              geodesic: true,
+              strokeColor: '#1E5BBA',
+              strokeOpacity: 0.8,
+              strokeWeight: 3,
+              map
+            });
+          }
+        }
+      );
     }
 
     // Fit bounds if we have points
     if (hasValidPoints) {
       map.fitBounds(bounds);
       
-      // Ensure reasonable zoom level
       google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
         const zoom = map.getZoom();
         if (zoom && zoom > 15) {
@@ -165,6 +212,23 @@ export default function MapPreview({
         className="w-full h-full rounded-lg"
         style={{ minHeight: '300px' }}
       />
+
+      {/* Route info overlay */}
+      {routeInfo && (
+        <div
+          className="absolute top-3 left-3 px-3 py-2 rounded-xl text-xs font-bold shadow-lg"
+          style={{
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(8px)',
+            color: '#ffffff',
+          }}
+        >
+          <span style={{ color: '#60a5fa' }}>{routeInfo.distance}</span>
+          <span className="mx-1" style={{ opacity: 0.5 }}>•</span>
+          <span style={{ color: '#34d399' }}>{routeInfo.duration}</span>
+        </div>
+      )}
+
       {!isLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-100 rounded-lg">
           <div className="text-center">

@@ -6,64 +6,96 @@ import { eq } from 'drizzle-orm';
 const connectedUsers = new Map(); // userId -> socket
 
 export function setupSocket(io) {
+  // Authentication middleware — allows unauthenticated connections for public tracking
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token || socket.handshake.query.token;
+
       if (!token) {
-        return next(new Error('Authentication required'));
+        // Allow unauthenticated connections for public tracking (read-only)
+        socket.userId = null;
+        socket.userRole = 'guest';
+        socket.isGuest = true;
+        return next();
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const [user] = await db.select().from(users).where(eq(users.id, decoded.userId));
 
       if (!user) {
-        return next(new Error('User not found'));
+        // Allow as guest instead of rejecting
+        socket.userId = null;
+        socket.userRole = 'guest';
+        socket.isGuest = true;
+        return next();
       }
 
       socket.userId = user.id;
       socket.userRole = user.role;
+      socket.isGuest = false;
       next();
     } catch (error) {
-      next(new Error('Invalid token'));
+      // On auth error, allow as guest for public tracking
+      socket.userId = null;
+      socket.userRole = 'guest';
+      socket.isGuest = true;
+      next();
     }
   });
 
   io.on('connection', (socket) => {
-    console.log(`✅ Socket connected: ${socket.userId} (${socket.userRole})`);
-    connectedUsers.set(socket.userId, socket);
+    if (socket.isGuest) {
+      console.log(`📡 Guest socket connected (tracking only)`);
+    } else {
+      console.log(`✅ Socket connected: ${socket.userId} (${socket.userRole})`);
+      connectedUsers.set(socket.userId, socket);
 
-    // Join user's personal room
-    socket.join(`user:${socket.userId}`);
+      // Join user's personal room
+      socket.join(`user:${socket.userId}`);
 
-    // Join role-based room
-    socket.join(`role:${socket.userRole}`);
+      // Join role-based room
+      socket.join(`role:${socket.userRole}`);
+    }
 
-    // Rider location update
+    // Rider location update (authenticated riders only)
     socket.on('rider:location', async (data) => {
-      if (socket.userRole !== 'rider') return;
+      if (socket.isGuest || socket.userRole !== 'rider') return;
 
       const { lat, lng, orderId } = data;
 
-      // Update rider location in database
-      await db.update(users)
-        .set({ currentLat: lat, currentLng: lng, lastSeen: new Date() })
-        .where(eq(users.id, socket.userId));
+      try {
+        // Update rider location in database
+        await db.update(users)
+          .set({ currentLat: lat, currentLng: lng, lastSeen: new Date() })
+          .where(eq(users.id, socket.userId));
 
-      // Broadcast to order room if rider is on a delivery
-      if (orderId) {
-        io.to(`order:${orderId}`).emit('rider:location-update', {
+        // Broadcast to order room if rider is on a delivery
+        if (orderId) {
+          io.to(`order:${orderId}`).emit('rider:location-update', {
+            riderId: socket.userId,
+            lat,
+            lng,
+            timestamp: new Date().toISOString(),
+          });
+        }
+
+        // Broadcast to admin room for fleet tracking
+        io.to('role:admin').to('role:super_admin').emit('rider:fleet-update', {
           riderId: socket.userId,
           lat,
           lng,
+          orderId,
           timestamp: new Date().toISOString(),
         });
+      } catch (error) {
+        console.error('Rider location update error:', error.message);
       }
     });
 
-    // Join order room (for tracking)
+    // Join order room (for tracking) — allowed for all including guests
     socket.on('order:subscribe', (orderId) => {
       socket.join(`order:${orderId}`);
-      console.log(`User ${socket.userId} subscribed to order ${orderId}`);
+      console.log(`${socket.isGuest ? 'Guest' : `User ${socket.userId}`} subscribed to order ${orderId}`);
     });
 
     // Leave order room
@@ -73,8 +105,10 @@ export function setupSocket(io) {
 
     // Disconnect
     socket.on('disconnect', () => {
-      console.log(`❌ Socket disconnected: ${socket.userId}`);
-      connectedUsers.delete(socket.userId);
+      if (!socket.isGuest) {
+        console.log(`❌ Socket disconnected: ${socket.userId}`);
+        connectedUsers.delete(socket.userId);
+      }
     });
   });
 

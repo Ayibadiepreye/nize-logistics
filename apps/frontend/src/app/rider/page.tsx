@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { initSocket } from '@/lib/socket';
+import MapPreview from '@/components/MapPreview';
 import {
   Package, DollarSign, CheckCircle, MapPin, Phone, Navigation, Zap,
   TrendingUp, Mail, MessageSquare, Activity, Power, Clock, ChevronRight,
@@ -93,11 +94,16 @@ export default function RiderDashboard() {
         if (statsRef.current?.isOnline && navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              socket.emit('rider:location', {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-                orderId: currentJobRef.current?.id,
-              });
+              const lat = position.coords.latitude;
+              const lng = position.coords.longitude;
+              const orderId = currentJobRef.current?.id;
+
+              if (socket && socket.connected) {
+                socket.emit('rider:location', { lat, lng, orderId });
+              } else {
+                // Fallback to REST endpoint if socket temporarily disconnected
+                api.post('/location/update', { lat, lng, orderId }).catch(() => {});
+              }
             },
             (error) => console.error('Location error:', error)
           );
@@ -562,8 +568,19 @@ export default function RiderDashboard() {
                     >
                       <h3 className="font-bold text-sm flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                         <MapPin className="w-4 h-4 text-blue-400" />
-                        <span>Route Directions</span>
+                        <span>Route Directions & Live GPS Map</span>
                       </h3>
+
+                      {/* Live Road Route Map */}
+                      <div className="w-full h-56 rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-color)' }}>
+                        <MapPreview
+                          pickupLat={parseFloat(currentJob.pickupLat)}
+                          pickupLng={parseFloat(currentJob.pickupLng)}
+                          dropoffLat={parseFloat(currentJob.dropoffLat)}
+                          dropoffLng={parseFloat(currentJob.dropoffLng)}
+                          className="w-full h-full"
+                        />
+                      </div>
 
                       <div className="space-y-4">
                         {/* Pickup Point */}

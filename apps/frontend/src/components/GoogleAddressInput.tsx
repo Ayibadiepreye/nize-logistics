@@ -55,11 +55,44 @@ export default function GoogleAddressInput({
       });
 
     return () => {
-      if (autocompleteRef.current) {
+      if (autocompleteRef.current && window.google?.maps?.event) {
         google.maps.event.clearInstanceListeners(autocompleteRef.current);
       }
     };
   }, [onChange]);
+
+  // Sync input value when prop changes externally
+  useEffect(() => {
+    if (inputRef.current && value !== undefined && inputRef.current.value !== value) {
+      inputRef.current.value = value || '';
+    }
+  }, [value]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const text = e.target.value;
+    onChange(text, 0, 0);
+  };
+
+  const handleInputBlur = () => {
+    const text = inputRef.current?.value?.trim();
+    if (text && window.google?.maps?.Geocoder) {
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode(
+        { address: text, componentRestrictions: { country: 'ng' } },
+        (results, status) => {
+          if (status === 'OK' && results?.[0]?.geometry?.location) {
+            const lat = results[0].geometry.location.lat();
+            const lng = results[0].geometry.location.lng();
+            const formatted = results[0].formatted_address || text;
+            onChange(formatted, lat, lng);
+            if (inputRef.current) {
+              inputRef.current.value = formatted;
+            }
+          }
+        }
+      );
+    }
+  };
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -120,6 +153,8 @@ export default function GoogleAddressInput({
           ref={inputRef}
           type="text"
           defaultValue={value}
+          onChange={handleInputChange}
+          onBlur={handleInputBlur}
           placeholder={placeholder}
           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
           disabled={!isLoaded}

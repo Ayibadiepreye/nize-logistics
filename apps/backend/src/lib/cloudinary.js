@@ -30,6 +30,7 @@ export async function uploadToCloudinary(buffer, filename) {
 }
 
 export async function deleteFromCloudinary(publicId) {
+  if (!publicId || !process.env.CLOUDINARY_CLOUD_NAME) return;
   try {
     await cloudinary.uploader.destroy(`nize-logistics/${publicId}`);
   } catch (error) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
@@ -42,6 +42,7 @@ export default function CreateOrder() {
   });
 
   const [priceEstimate, setPriceEstimate] = useState<any>(null);
+  const [estimating, setEstimating] = useState(false);
 
   const updateField = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -89,33 +90,64 @@ export default function CreateOrder() {
     }
   };
 
-  const calculateDistance = () => {
-    const R = 6371;
-    const lat1 = parseFloat(formData.pickupLat);
-    const lon1 = parseFloat(formData.pickupLng);
-    const lat2 = parseFloat(formData.dropoffLat);
-    const lon2 = parseFloat(formData.dropoffLng);
+  // Calculate price using backend API (Google Maps Distance Matrix)
+  const calculateEstimate = useCallback(async () => {
+    const pickupLat = parseFloat(formData.pickupLat);
+    const pickupLng = parseFloat(formData.pickupLng);
+    const dropoffLat = parseFloat(formData.dropoffLat);
+    const dropoffLng = parseFloat(formData.dropoffLng);
 
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = R * c;
+    if (isNaN(pickupLat) || isNaN(pickupLng) || isNaN(dropoffLat) || isNaN(dropoffLng)) {
+      return;
+    }
 
-    const baseFare = 500;
-    const perKmRate = 120;
-    const minimumFare = 1000;
-    const price = Math.max(minimumFare, baseFare + distance * perKmRate);
+    setEstimating(true);
+    try {
+      const { data } = await api.post('/pricing/calculate', {
+        pickupLat: formData.pickupLat,
+        pickupLng: formData.pickupLng,
+        dropoffLat: formData.dropoffLat,
+        dropoffLng: formData.dropoffLng,
+      });
 
-    return { distance: distance.toFixed(2), price: price.toFixed(2) };
-  };
+      setPriceEstimate({
+        distance: data.distance.km.toFixed(2),
+        distanceText: data.distance.text,
+        price: data.price.total.toFixed(2),
+        duration: data.duration.text,
+        durationMinutes: data.duration.minutes,
+      });
+    } catch (err) {
+      // Fallback to Haversine calculation
+      const R = 6371;
+      const dLat = ((dropoffLat - pickupLat) * Math.PI) / 180;
+      const dLon = ((dropoffLng - pickupLng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((pickupLat * Math.PI) / 180) *
+          Math.cos((dropoffLat * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c;
+      const price = Math.max(1000, 500 + distance * 120);
 
-  const estimate = calculateDistance();
+      setPriceEstimate({
+        distance: distance.toFixed(2),
+        distanceText: `${distance.toFixed(1)} km`,
+        price: price.toFixed(2),
+        duration: `~${Math.ceil((distance / 30) * 60)} mins`,
+        durationMinutes: Math.ceil((distance / 30) * 60),
+      });
+    } finally {
+      setEstimating(false);
+    }
+  }, [formData.pickupLat, formData.pickupLng, formData.dropoffLat, formData.dropoffLng]);
+
+  // Auto-calculate when coordinates change
+  useEffect(() => {
+    calculateEstimate();
+  }, [calculateEstimate]);
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -238,11 +270,18 @@ export default function CreateOrder() {
                     <div className="flex justify-between items-center">
                       <div>
                         <p className="text-sm text-gray-600">Estimated Distance</p>
-                        <p className="text-2xl font-bold text-primary">{estimate.distance} km</p>
+                        <p className="text-2xl font-bold text-primary">
+                          {estimating ? '...' : priceEstimate?.distance || '0'} km
+                        </p>
+                        {priceEstimate?.duration && (
+                          <p className="text-xs text-gray-500 mt-1">🕐 {priceEstimate.duration} drive</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-sm text-gray-600">Estimated Price</p>
-                        <p className="text-2xl font-bold text-teal">₦{parseFloat(estimate.price).toLocaleString()}</p>
+                        <p className="text-2xl font-bold text-teal">
+                          ₦{estimating ? '...' : parseFloat(priceEstimate?.price || '0').toLocaleString()}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -430,11 +469,14 @@ export default function CreateOrder() {
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="text-sm opacity-90">Total Amount</p>
-                    <p className="text-4xl font-bold">₦{parseFloat(estimate.price).toLocaleString()}</p>
+                    <p className="text-4xl font-bold">₦{parseFloat(priceEstimate?.price || '0').toLocaleString()}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm opacity-90">Distance</p>
-                    <p className="text-2xl font-bold">{estimate.distance} km</p>
+                    <p className="text-2xl font-bold">{priceEstimate?.distance || '0'} km</p>
+                    {priceEstimate?.duration && (
+                      <p className="text-sm opacity-75 mt-1">🕐 {priceEstimate.duration}</p>
+                    )}
                   </div>
                 </div>
               </div>

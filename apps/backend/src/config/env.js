@@ -10,3 +10,4 @@ dotenv.config({ path: resolve(__dirname, '../../.env') });
 
 console.log('✅ Environment variables loaded');
 console.log('🔍 DATABASE_URL exists:', !!process.env.DATABASE_URL);
+console.log('🗺️  GOOGLE_MAPS_API_KEY exists:', !!process.env.GOOGLE_MAPS_API_KEY);

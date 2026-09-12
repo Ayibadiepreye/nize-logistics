@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { initSocket } from '@/lib/socket';
+import Map from '@/components/Map';
 import {
   Package, Users, DollarSign, TrendingUp, UserPlus, Mail, Activity, Clock,
   CheckCircle, XCircle, AlertCircle, ArrowRight, BarChart3, Eye, FileText,
@@ -92,7 +94,63 @@ export default function AdminDashboard() {
     }
 
     loadDashboard();
+
+    const token = localStorage.getItem('token');
+    let socket: any = null;
+    if (token) {
+      socket = initSocket(token);
+
+      socket.on('rider:fleet-update', (data: any) => {
+        setRiders((prev) =>
+          prev.map((r) => {
+            if (r.id === data.riderId) {
+              return {
+                ...r,
+                currentLat: data.lat.toString(),
+                currentLng: data.lng.toString(),
+                isOnline: true,
+                isBusy: !!data.orderId,
+              };
+            }
+            return r;
+          })
+        );
+      });
+
+      socket.on('order:status-update', () => {
+        loadDashboard();
+      });
+
+      socket.on('payment:confirmed', () => {
+        loadDashboard();
+      });
+    }
+
+    return () => {
+      if (socket) {
+        socket.off('rider:fleet-update');
+        socket.off('order:status-update');
+        socket.off('payment:confirmed');
+      }
+    };
   }, []);
+
+  const onlineRiderMarkers = useMemo(() => {
+    return riders
+      .filter(
+        (r) =>
+          r.isOnline &&
+          r.currentLat &&
+          r.currentLng &&
+          !isNaN(parseFloat(r.currentLat)) &&
+          !isNaN(parseFloat(r.currentLng))
+      )
+      .map((r) => ({
+        position: [parseFloat(r.currentLat), parseFloat(r.currentLng)] as [number, number],
+        popup: `<b>🛵 ${r.fullName}</b><br/>${r.vehicleType || 'Motorcycle'} • ${r.plateNumber || ''}<br/>Status: ${r.isBusy ? 'On Job' : 'Available'}`,
+        icon: 'rider' as const,
+      }));
+  }, [riders]);
 
   const loadDashboard = async () => {
     setRefreshing(true);
@@ -866,6 +924,34 @@ export default function AdminDashboard() {
           {/* ================= TAB 3: RIDERS ================= */}
           {activeTab === 'riders' && (
             <div className="space-y-6">
+              {/* Live Fleet Dispatch Radar Map */}
+              <div
+                className="rounded-2xl p-6 border shadow-xl space-y-4"
+                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+                    <div>
+                      <h2 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>Live Fleet Telemetry & GPS Radar</h2>
+                      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Real-time location of active dispatch escorts across Port Harcourt</p>
+                    </div>
+                  </div>
+                  <span className="badge badge-delivered text-xs font-bold">
+                    {onlineRiderMarkers.length} Online GPS Nodes
+                  </span>
+                </div>
+
+                <div className="h-72 w-full rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-color)' }}>
+                  <Map
+                    center={[4.8156, 7.0498]}
+                    zoom={12}
+                    markers={onlineRiderMarkers}
+                    className="w-full h-full"
+                  />
+                </div>
+              </div>
+
               {/* Rider Filters */}
               <div
                 className="rounded-2xl p-5 border flex flex-col md:flex-row items-center justify-between gap-4"

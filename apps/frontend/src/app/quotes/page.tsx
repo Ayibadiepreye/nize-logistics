@@ -1,15 +1,29 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
 import { useRouter } from 'next/navigation';
+import GoogleAddressInput from '@/components/GoogleAddressInput';
+import MapPreview from '@/components/MapPreview';
+import api from '@/lib/api';
 
 export default function QuotesPage() {
   const router = useRouter();
   const [distance, setDistance] = useState('');
-  const [quote, setQuote] = useState<{ distance: string; price: string; breakdown: any } | null>(null);
+  const [quote, setQuote] = useState<{ distance: string; price: string; duration?: string; breakdown: any } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  // Address-based quote
+  const [pickupAddress, setPickupAddress] = useState('');
+  const [pickupLat, setPickupLat] = useState<number | null>(null);
+  const [pickupLng, setPickupLng] = useState<number | null>(null);
+  const [dropoffAddress, setDropoffAddress] = useState('');
+  const [dropoffLat, setDropoffLat] = useState<number | null>(null);
+  const [dropoffLng, setDropoffLng] = useState<number | null>(null);
+  const [addressQuote, setAddressQuote] = useState<any>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
 
   const calculateQuote = () => {
     const dist = parseFloat(distance);
@@ -33,6 +47,60 @@ export default function QuotesPage() {
       }
     });
   };
+
+  // Calculate quote using Google Maps Distance Matrix via API
+  const calculateAddressQuote = useCallback(async () => {
+    if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng) {
+      return;
+    }
+
+    setAddressLoading(true);
+    try {
+      const { data } = await api.post('/pricing/calculate', {
+        pickupLat,
+        pickupLng,
+        dropoffLat,
+        dropoffLng,
+      });
+
+      setAddressQuote({
+        distance: data.distance.km.toFixed(2),
+        distanceText: data.distance.text,
+        price: data.price.total.toFixed(2),
+        duration: data.duration.text,
+        breakdown: data.price.breakdown,
+      });
+    } catch (err) {
+      // Fallback to Haversine
+      const R = 6371;
+      const dLat = ((dropoffLat - pickupLat) * Math.PI) / 180;
+      const dLon = ((dropoffLng - pickupLng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((pickupLat * Math.PI) / 180) *
+          Math.cos((dropoffLat * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const dist = R * c;
+      const price = Math.max(1000, 500 + dist * 120);
+
+      setAddressQuote({
+        distance: dist.toFixed(2),
+        distanceText: `${dist.toFixed(1)} km`,
+        price: price.toFixed(2),
+        duration: `~${Math.ceil((dist / 30) * 60)} mins`,
+        breakdown: {
+          baseFare: 500,
+          distanceFare: dist * 120,
+          perKmRate: 120,
+          minimumFare: 1000,
+        },
+      });
+    } finally {
+      setAddressLoading(false);
+    }
+  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
 
   return (
     <>
@@ -62,18 +130,145 @@ export default function QuotesPage() {
                 Get an Instant Quote
               </h1>
               <p style={{ fontSize: '20px', color: 'rgba(255,255,255,0.9)', maxWidth: '700px', margin: '0 auto' }}>
-                Calculate delivery costs based on distance - transparent pricing, no hidden fees
+                Calculate delivery costs by entering addresses or distance — transparent pricing, no hidden fees
               </p>
             </div>
           </div>
         </section>
 
-        {/* Calculator */}
+        {/* Address-Based Calculator */}
         <section className="py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
+          <div className="container" style={{ maxWidth: '1200px' }}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left: Address Inputs */}
+              <div className="card">
+                <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
+                  <i className="fas fa-map-marker-alt" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
+                  Quote by Address
+                </h2>
+
+                <div className="space-y-4">
+                  <GoogleAddressInput
+                    value={pickupAddress}
+                    onChange={(address, lat, lng) => {
+                      setPickupAddress(address);
+                      setPickupLat(lat);
+                      setPickupLng(lng);
+                    }}
+                    placeholder="Enter pickup address"
+                    label="Pickup Address"
+                    showCurrentLocation={true}
+                  />
+
+                  <div style={{ marginTop: '16px' }}>
+                    <GoogleAddressInput
+                      value={dropoffAddress}
+                      onChange={(address, lat, lng) => {
+                        setDropoffAddress(address);
+                        setDropoffLat(lat);
+                        setDropoffLng(lng);
+                      }}
+                      placeholder="Enter dropoff address"
+                      label="Dropoff Address"
+                    />
+                  </div>
+
+                  <button
+                    onClick={calculateAddressQuote}
+                    disabled={!pickupLat || !dropoffLat || addressLoading}
+                    className="btn btn-primary btn-lg"
+                    style={{ width: '100%', marginTop: '16px' }}
+                  >
+                    {addressLoading ? (
+                      <><i className="fas fa-spinner fa-spin"></i> Calculating...</>
+                    ) : (
+                      <><i className="fas fa-route"></i> Get Accurate Quote</>
+                    )}
+                  </button>
+
+                  {/* Address-based Quote Result */}
+                  {addressQuote && (
+                    <div style={{
+                      marginTop: '24px',
+                      padding: '24px',
+                      background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                      borderRadius: '16px',
+                      color: 'white'
+                    }}>
+                      <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                        <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Estimated Price</p>
+                        <p style={{ fontSize: '48px', fontWeight: 800 }}>₦{parseFloat(addressQuote.price).toLocaleString()}</p>
+                        <p style={{ fontSize: '16px', opacity: 0.9 }}>
+                          {addressQuote.distanceText} • {addressQuote.duration}
+                        </p>
+                      </div>
+
+                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '16px' }}>
+                        <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', opacity: 0.9 }}>Price Breakdown:</p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
+                          <span>Base Fare</span>
+                          <span>₦{(addressQuote.breakdown.baseFare || 500).toLocaleString()}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
+                          <span>Distance ({addressQuote.distance} km × ₦{addressQuote.breakdown.perKmRate || 120}/km)</span>
+                          <span>₦{(addressQuote.breakdown.distanceFare || 0).toFixed(0)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.2)', fontSize: '16px', fontWeight: 600 }}>
+                          <span>Total</span>
+                          <span>₦{parseFloat(addressQuote.price).toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => router.push('/order')}
+                        style={{
+                          width: '100%',
+                          marginTop: '20px',
+                          padding: '14px',
+                          background: 'white',
+                          color: 'var(--primary)',
+                          border: 'none',
+                          borderRadius: '12px',
+                          fontSize: '16px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'transform 0.2s ease'
+                        }}
+                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                      >
+                        <i className="fas fa-rocket"></i> Book This Delivery
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: Map Preview */}
+              <div className="card" style={{ height: '500px', padding: '16px' }}>
+                <h3 className="font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+                  <i className="fas fa-map" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
+                  Route Preview
+                </h3>
+                <div style={{ height: 'calc(100% - 40px)' }}>
+                  <MapPreview
+                    pickupLat={pickupLat || undefined}
+                    pickupLng={pickupLng || undefined}
+                    dropoffLat={dropoffLat || undefined}
+                    dropoffLng={dropoffLng || undefined}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Distance-Based Calculator */}
+        <section className="py-8 px-4">
           <div className="container" style={{ maxWidth: '700px' }}>
             <div className="card">
               <h2 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
-                Distance-Based Calculator
+                Quick Distance Calculator
               </h2>
               
               <div style={{ marginBottom: '24px' }}>
@@ -91,8 +286,7 @@ export default function QuotesPage() {
                   style={{ fontSize: '18px' }}
                 />
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                  <i className="fas fa-info-circle"></i> Don't know the distance? Use our{' '}
-                  <a href="/order" style={{ color: 'var(--primary)', fontWeight: 600 }}>order form</a> with address autocomplete
+                  <i className="fas fa-info-circle"></i> Don't know the distance? Use the address calculator above for accurate estimates
                 </p>
               </div>
 
@@ -217,7 +411,7 @@ export default function QuotesPage() {
                   Per Kilometer
                 </h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: '1.6' }}>
-                  <strong>₦120 per km</strong> calculated based on actual distance traveled
+                  <strong>₦120 per km</strong> calculated based on actual driving distance via Google Maps
                 </p>
               </div>
 
@@ -251,8 +445,8 @@ export default function QuotesPage() {
               </h3>
               <ul style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: '1.8', paddingLeft: '20px' }}>
                 <li>No hidden charges - the price you see is what you pay</li>
-                <li>Prices shown are estimates based on straight-line distance</li>
-                <li>Actual price may vary slightly based on rider route</li>
+                <li>Prices are calculated using Google Maps driving distance for accuracy</li>
+                <li>Actual price may vary slightly based on real-time traffic conditions</li>
                 <li>All packages up to ₦50,000 are automatically insured</li>
                 <li>Bulk discounts available for businesses - contact us</li>
               </ul>

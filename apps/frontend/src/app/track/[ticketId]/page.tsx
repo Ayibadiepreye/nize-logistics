@@ -8,7 +8,7 @@ import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
 import Map from '@/components/Map';
 import api from '@/lib/api';
-import { initSocket } from '@/lib/socket';
+import { initPublicSocket } from '@/lib/socket';
 import {
   Package, MapPin, Clock, User, Phone, CheckCircle, Navigation,
   MessageSquare, ShieldCheck, ArrowLeft, RefreshCw, AlertCircle,
@@ -19,6 +19,7 @@ export default function TrackOrder() {
   const { ticketId } = useParams();
   const router = useRouter();
   const [order, setOrder] = useState<any>(null);
+  const [routePolyline, setRoutePolyline] = useState<string | null>(null);
   const [rider, setRider] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -28,31 +29,39 @@ export default function TrackOrder() {
   useEffect(() => {
     loadOrder();
 
-    // Subscribe to real-time order and rider location updates via socket
-    const socket = initSocket('');
-    if (ticketId) {
-      socket.emit('order:subscribe', ticketId);
+    // Subscribe to real-time order and rider location updates via public socket
+    const socket = initPublicSocket();
+    let subscribedOrderId: string | null = null;
 
+    if (ticketId) {
+      // We'll subscribe to the order room once we have the order ID
       socket.on('order:status-update', (data: any) => {
-        if (data.ticketId === ticketId || data.orderId === order?.id) {
+        if (data.ticketId === ticketId || data.orderId) {
           loadOrder();
         }
       });
 
       socket.on('rider:location-update', (data: any) => {
-        if (data.riderId === rider?.id) {
-          setRider((prev: any) => ({
-            ...prev,
-            currentLat: data.lat,
-            currentLng: data.lng,
-          }));
-        }
+        setRider((prev: any) => {
+          if (prev && data.riderId === prev.id) {
+            return {
+              ...prev,
+              currentLat: data.lat,
+              currentLng: data.lng,
+            };
+          }
+          return prev;
+        });
       });
     }
 
     return () => {
-      if (socket && ticketId) {
-        socket.emit('order:unsubscribe', ticketId);
+      if (socket) {
+        socket.off('order:status-update');
+        socket.off('rider:location-update');
+        if (subscribedOrderId) {
+          socket.emit('order:unsubscribe', subscribedOrderId);
+        }
       }
     };
   }, [ticketId]);
@@ -63,7 +72,14 @@ export default function TrackOrder() {
       const { data } = await api.get(`/tracking/${ticketId}`);
       setOrder(data.order);
       setRider(data.rider);
+      setRoutePolyline(data.route?.polyline || null);
       setError('');
+
+      // Subscribe to order room via socket for real-time updates
+      if (data.order?.id) {
+        const socket = initPublicSocket();
+        socket.emit('order:subscribe', data.order.id);
+      }
     } catch (err: any) {
       setError(err.response?.data?.error || 'Order not found. Please check your ticket ID.');
     } finally {
@@ -157,7 +173,7 @@ export default function TrackOrder() {
   const markers: Array<{
     position: [number, number];
     popup: string;
-    icon?: 'pickup' | 'dropoff';
+    icon?: 'pickup' | 'dropoff' | 'rider';
   }> = [
     {
       position: [parseFloat(order.pickupLat), parseFloat(order.pickupLng)],
@@ -175,7 +191,7 @@ export default function TrackOrder() {
     markers.push({
       position: [parseFloat(rider.currentLat), parseFloat(rider.currentLng)],
       popup: `<b>🛵 Rider:</b> ${rider.fullName} (Live)`,
-      icon: 'pickup',
+      icon: 'rider',
     });
   }
 
@@ -324,6 +340,8 @@ export default function TrackOrder() {
                 <Map
                   center={[parseFloat(order.pickupLat) || 4.8156, parseFloat(order.pickupLng) || 7.0498]}
                   markers={markers}
+                  routePolyline={routePolyline || undefined}
+                  showRouteInfo={true}
                   className="w-full h-full min-h-[380px]"
                 />
               </div>

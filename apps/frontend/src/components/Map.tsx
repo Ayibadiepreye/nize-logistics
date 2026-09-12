@@ -12,7 +12,9 @@ interface MapProps {
     icon?: 'pickup' | 'dropoff' | 'rider';
   }>;
   route?: Array<[number, number]>;
+  routePolyline?: string; // Encoded polyline from Google Directions API
   className?: string;
+  showRouteInfo?: boolean;
 }
 
 export default function GoogleMap({
@@ -20,14 +22,18 @@ export default function GoogleMap({
   zoom = 13,
   markers = [],
   route,
+  routePolyline,
   className = '',
+  showRouteInfo = false,
 }: MapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const googleMarkersRef = useRef<google.maps.Marker[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState('');
+  const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
 
   useEffect(() => {
     loadGoogleMaps()
@@ -60,7 +66,7 @@ export default function GoogleMap({
       });
   }, []);
 
-  // Update markers and route polyline whenever coordinates change
+  // Update markers, route polyline, and directions whenever data changes
   useEffect(() => {
     if (!isLoaded || !mapInstanceRef.current || !window.google?.maps) return;
 
@@ -74,6 +80,12 @@ export default function GoogleMap({
     if (polylineRef.current) {
       polylineRef.current.setMap(null);
       polylineRef.current = null;
+    }
+
+    // Clear old directions renderer
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setMap(null);
+      directionsRendererRef.current = null;
     }
 
     const bounds = new google.maps.LatLngBounds();
@@ -110,11 +122,12 @@ export default function GoogleMap({
       } else if (iconType === 'rider') {
         markerIcon = {
           path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 6,
+          scale: 7,
           fillColor: '#10b981',
           fillOpacity: 1,
           strokeColor: '#ffffff',
           strokeWeight: 2,
+          rotation: 0,
         };
       }
 
@@ -123,7 +136,14 @@ export default function GoogleMap({
         map,
         icon: markerIcon,
         title: markerData.popup ? markerData.popup.replace(/<[^>]*>/g, '') : undefined,
+        animation: iconType === 'rider' ? google.maps.Animation.BOUNCE : undefined,
+        zIndex: iconType === 'rider' ? 1000 : undefined,
       });
+
+      // Stop bounce animation after 2 bounces for rider
+      if (iconType === 'rider') {
+        setTimeout(() => marker.setAnimation(null), 1500);
+      }
 
       if (markerData.popup) {
         const infoWindow = new google.maps.InfoWindow({
@@ -140,8 +160,90 @@ export default function GoogleMap({
       hasPoints = true;
     });
 
-    // Draw route polyline if coordinates available
-    if (route && route.length > 1) {
+    // Render route using encoded polyline from API (most accurate — follows roads)
+    if (routePolyline) {
+      try {
+        const decodedPath = google.maps.geometry?.encoding?.decodePath(routePolyline);
+        if (decodedPath && decodedPath.length > 0) {
+          polylineRef.current = new google.maps.Polyline({
+            path: decodedPath,
+            geodesic: true,
+            strokeColor: '#0066ff',
+            strokeOpacity: 0.85,
+            strokeWeight: 5,
+            map,
+          });
+
+          // Extend bounds with polyline path
+          decodedPath.forEach((point) => bounds.extend(point));
+        }
+      } catch (err) {
+        console.warn('Failed to decode polyline, falling back to Directions Service');
+      }
+    }
+
+    // If no encoded polyline, try Directions Service for road-following route
+    if (!routePolyline && markers.length >= 2) {
+      const pickupMarker = markers.find(m => m.icon === 'pickup');
+      const dropoffMarker = markers.find(m => m.icon === 'dropoff');
+
+      if (pickupMarker && dropoffMarker) {
+        const directionsService = new google.maps.DirectionsService();
+        const directionsRenderer = new google.maps.DirectionsRenderer({
+          map,
+          suppressMarkers: true, // We draw our own markers
+          polylineOptions: {
+            strokeColor: '#0066ff',
+            strokeOpacity: 0.85,
+            strokeWeight: 5,
+          },
+        });
+
+        directionsService.route(
+          {
+            origin: { lat: pickupMarker.position[0], lng: pickupMarker.position[1] },
+            destination: { lat: dropoffMarker.position[0], lng: dropoffMarker.position[1] },
+            travelMode: google.maps.TravelMode.DRIVING,
+          },
+          (result, status) => {
+            if (status === google.maps.DirectionsStatus.OK && result) {
+              directionsRenderer.setDirections(result);
+              directionsRendererRef.current = directionsRenderer;
+
+              // Extract route info
+              const leg = result.routes?.[0]?.legs?.[0];
+              if (leg) {
+                setRouteInfo({
+                  distance: leg.distance?.text || '',
+                  duration: leg.duration?.text || '',
+                });
+              }
+            } else {
+              // Fallback: draw straight line
+              const validMarkers = markers.filter(
+                (m) => !isNaN(m.position[0]) && !isNaN(m.position[1])
+              );
+              if (validMarkers.length >= 2) {
+                const path = validMarkers.map(
+                  (m) => new google.maps.LatLng(m.position[0], m.position[1])
+                );
+                polylineRef.current = new google.maps.Polyline({
+                  path,
+                  geodesic: true,
+                  strokeColor: '#0066ff',
+                  strokeOpacity: 0.8,
+                  strokeWeight: 4,
+                  map,
+                });
+              }
+            }
+          }
+        );
+      }
+    }
+
+    // Draw custom route array if provided
+    if (route && route.length > 1 && !routePolyline) {
       const path = route.map(([lat, lng]) => new google.maps.LatLng(lat, lng));
       polylineRef.current = new google.maps.Polyline({
         path,
@@ -151,20 +253,6 @@ export default function GoogleMap({
         strokeWeight: 4,
         map,
       });
-    } else if (markers.length >= 2) {
-      // Connect markers automatically
-      const validMarkers = markers.filter((m) => !isNaN(m.position[0]) && !isNaN(m.position[1]));
-      if (validMarkers.length >= 2) {
-        const path = validMarkers.map((m) => new google.maps.LatLng(m.position[0], m.position[1]));
-        polylineRef.current = new google.maps.Polyline({
-          path,
-          geodesic: true,
-          strokeColor: '#0066ff',
-          strokeOpacity: 0.8,
-          strokeWeight: 4,
-          map,
-        });
-      }
     }
 
     if (hasPoints) {
@@ -176,11 +264,28 @@ export default function GoogleMap({
         }
       });
     }
-  }, [isLoaded, markers, route]);
+  }, [isLoaded, markers, route, routePolyline]);
 
   return (
     <div className={`relative w-full h-full min-h-[300px] ${className}`}>
       <div ref={mapRef} className="w-full h-full rounded-2xl" style={{ minHeight: '300px' }} />
+
+      {/* Route info overlay */}
+      {showRouteInfo && routeInfo && (
+        <div
+          className="absolute top-3 left-3 px-3 py-2 rounded-xl text-xs font-bold shadow-lg"
+          style={{
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(8px)',
+            color: '#ffffff',
+          }}
+        >
+          <span className="text-blue-400">{routeInfo.distance}</span>
+          <span className="mx-1 opacity-50">•</span>
+          <span className="text-green-400">{routeInfo.duration}</span>
+        </div>
+      )}
+
       {!isLoaded && !loadError && (
         <div className="absolute inset-0 flex items-center justify-center rounded-2xl" style={{ background: 'var(--bg-secondary)' }}>
           <div className="text-center space-y-2">

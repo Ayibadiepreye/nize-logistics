@@ -7,6 +7,7 @@ import { initializeTransaction } from '../lib/paystack.js';
 import { generateTicketImage } from '../lib/ticket.js';
 import { sendEmail } from '../lib/email.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { getDistanceMatrix, getDirections } from '../lib/google-maps.js';
 
 const router = express.Router();
 
@@ -41,11 +42,24 @@ router.post('/', optionalAuth, async (req, res, next) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // Calculate distance
-    const distanceKm = calculateDistance(
-      parseFloat(pickupLat), parseFloat(pickupLng),
-      parseFloat(dropoffLat), parseFloat(dropoffLng)
-    );
+    // Calculate distance using Google Maps (with Haversine fallback)
+    const origin = { lat: parseFloat(pickupLat), lng: parseFloat(pickupLng) };
+    const destination = { lat: parseFloat(dropoffLat), lng: parseFloat(dropoffLng) };
+
+    let distanceKm;
+    let estimatedDuration = null;
+
+    try {
+      const distanceData = await getDistanceMatrix(origin, destination);
+      distanceKm = distanceData.distanceKm;
+      estimatedDuration = distanceData.durationMinutes;
+    } catch (err) {
+      // Fallback to Haversine
+      distanceKm = calculateDistance(
+        parseFloat(pickupLat), parseFloat(pickupLng),
+        parseFloat(dropoffLat), parseFloat(dropoffLng)
+      );
+    }
 
     // Get pricing config
     const [pricing] = await db.select().from(pricingConfig).where(eq(pricingConfig.id, 1));
@@ -58,6 +72,11 @@ router.post('/', optionalAuth, async (req, res, next) => {
     const ticketId = generateTicketId();
     const recipientToken = generateRecipientToken();
     const recipientLinkExpiresAt = new Date(Date.now() + (2 * 24 * 60 * 60 * 1000)); // 2 days
+
+    // Calculate estimated delivery time
+    const estimatedDeliveryTime = estimatedDuration
+      ? new Date(Date.now() + (estimatedDuration + 15) * 60 * 1000) // Add 15 min buffer for pickup
+      : null;
 
     const [order] = await db.insert(orders).values({
       ticketId,
@@ -76,6 +95,7 @@ router.post('/', optionalAuth, async (req, res, next) => {
       status: 'pending',
       recipientToken,
       recipientLinkExpiresAt,
+      estimatedDeliveryTime,
     }).returning();
 
     // Initialize Paystack if not COD
@@ -109,11 +129,68 @@ router.post('/', optionalAuth, async (req, res, next) => {
         ticketId: order.ticketId,
         totalPrice: order.totalPrice,
         distanceKm: order.distanceKm,
+        estimatedDuration: estimatedDuration ? `${estimatedDuration} mins` : null,
         status: order.status,
         paymentMethod: order.paymentMethod,
         recipientTrackingLink: `${process.env.FRONTEND_URL}/recipient/${recipientToken}`,
       },
       payment: paymentData,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get order by ID
+router.get('/:orderId', optionalAuth, async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    let riderData = null;
+    if (order.assignedRiderId) {
+      const [rider] = await db.select({
+        id: users.id,
+        fullName: users.fullName,
+        phone: users.phone,
+        vehicleType: users.vehicleType,
+        plateNumber: users.plateNumber,
+        currentLat: users.currentLat,
+        currentLng: users.currentLng,
+        profilePhotoUrl: users.profilePhotoUrl,
+      }).from(users).where(eq(users.id, order.assignedRiderId));
+      riderData = rider || null;
+    }
+
+    // Get directions polyline for map
+    let routeData = null;
+    if (order.pickupLat && order.pickupLng && order.dropoffLat && order.dropoffLng) {
+      try {
+        const directions = await getDirections(
+          { lat: parseFloat(order.pickupLat), lng: parseFloat(order.pickupLng) },
+          { lat: parseFloat(order.dropoffLat), lng: parseFloat(order.dropoffLng) }
+        );
+        if (directions) {
+          routeData = {
+            polyline: directions.polyline,
+            distanceText: directions.distanceText,
+            durationText: directions.durationText,
+          };
+        }
+      } catch (err) {
+        // Directions not critical, continue without
+      }
+    }
+
+    res.json({
+      order,
+      rider: riderData,
+      route: routeData,
     });
   } catch (error) {
     next(error);
@@ -225,6 +302,31 @@ router.put('/:orderId', optionalAuth, async (req, res, next) => {
     if (updates.recipientPhone) allowedUpdates.recipientPhone = updates.recipientPhone;
     if (updates.notes) allowedUpdates.notes = updates.notes;
     if (updates.scheduledPickupAt) allowedUpdates.scheduledPickupAt = new Date(updates.scheduledPickupAt);
+
+    // Recalculate distance if addresses changed
+    if (updates.pickupLat && updates.pickupLng && updates.dropoffLat && updates.dropoffLng) {
+      allowedUpdates.pickupLat = updates.pickupLat;
+      allowedUpdates.pickupLng = updates.pickupLng;
+      allowedUpdates.dropoffLat = updates.dropoffLat;
+      allowedUpdates.dropoffLng = updates.dropoffLng;
+
+      try {
+        const distanceData = await getDistanceMatrix(
+          { lat: parseFloat(updates.pickupLat), lng: parseFloat(updates.pickupLng) },
+          { lat: parseFloat(updates.dropoffLat), lng: parseFloat(updates.dropoffLng) }
+        );
+        allowedUpdates.distanceKm = distanceData.distanceKm.toFixed(2);
+
+        // Recalculate price
+        const [pricing] = await db.select().from(pricingConfig).where(eq(pricingConfig.id, 1));
+        const baseFare = parseFloat(pricing?.baseFare || 500);
+        const perKmRate = parseFloat(pricing?.perKmRate || 120);
+        const minimumFare = parseFloat(pricing?.minimumFare || 1000);
+        allowedUpdates.totalPrice = Math.max(minimumFare, baseFare + (distanceData.distanceKm * perKmRate)).toFixed(2);
+      } catch (err) {
+        // Continue without distance recalculation
+      }
+    }
 
     if (Object.keys(allowedUpdates).length === 0) {
       return res.status(400).json({ error: 'No valid updates provided' });

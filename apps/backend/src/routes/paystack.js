@@ -6,19 +6,25 @@ import { eq } from 'drizzle-orm';
 
 const router = express.Router();
 
-// Paystack webhook
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res, next) => {
+// Paystack webhook — must receive raw body for HMAC verification
+// Note: This route is mounted BEFORE global JSON middleware in server.js
+router.post('/webhook', async (req, res, next) => {
   try {
+    // The raw body is available because we mount this route before express.json()
+    // or we use a special raw body capture
+    const rawBody = req.rawBody || JSON.stringify(req.body);
+
     const hash = crypto
       .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
-      .update(JSON.stringify(req.body))
+      .update(rawBody)
       .digest('hex');
 
     if (hash !== req.headers['x-paystack-signature']) {
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    const event = req.body;
+    // Parse the body if it came as raw
+    const event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
     if (event.event === 'charge.success') {
       const reference = event.data.reference;

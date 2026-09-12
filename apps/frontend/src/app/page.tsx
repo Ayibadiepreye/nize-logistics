@@ -15,12 +15,12 @@ export default function Home() {
       alert('Please enter an Order ID');
       return;
     }
-    const orderIdPattern = /^NZ-\d{4}$/i;
+    const orderIdPattern = /^(NIZ|NZ)-[A-Z0-9]{4,8}$/i;
     if (!orderIdPattern.test(orderId)) {
-      alert('Invalid Order ID format. Use format: NZ-8402');
+      alert('Invalid Order ID format. Use format: NIZ-840212 or NZ-8402');
       return;
     }
-    window.location.href = `/track/${orderId}`;
+    window.location.href = `/track/${orderId.toUpperCase()}`;
   };
 
   return (
@@ -62,10 +62,10 @@ export default function Home() {
                     <input 
                       type="text" 
                       className="track-input" 
-                      placeholder="Enter Order ID (e.g. NZ-8402)..."
+                      placeholder="Enter Order ID (e.g. NIZ-840212 or NZ-8402)..."
                       value={trackInput}
                       onChange={(e) => setTrackInput(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleTrack()}
+                      onKeyDown={(e) => e.key === 'Enter' && handleTrack()}
                     />
                     <button className="btn btn-primary" onClick={handleTrack}>Track</button>
                   </div>
