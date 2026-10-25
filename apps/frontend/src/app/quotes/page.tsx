@@ -1,29 +1,61 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
-import { useRouter } from 'next/navigation';
 import GoogleAddressInput from '@/components/GoogleAddressInput';
 import MapPreview from '@/components/MapPreview';
-import api from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import Icon from '@/components/Icon';
+import api, { apiError } from '@/lib/api';
+import { naira } from '@/lib/format';
 
 export default function QuotesPage() {
   const router = useRouter();
   const [distance, setDistance] = useState('');
-  const [quote, setQuote] = useState<{ distance: string; price: string; duration?: string; breakdown: any } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [quote, setQuote] = useState<{ distance: string; price: string; breakdown: any } | null>(null);
 
-  // Address-based quote
+  // Address-based quote — priced on real road distance from the backend rather
+  // than a straight line between the two pins.
   const [pickupAddress, setPickupAddress] = useState('');
   const [pickupLat, setPickupLat] = useState<number | null>(null);
   const [pickupLng, setPickupLng] = useState<number | null>(null);
   const [dropoffAddress, setDropoffAddress] = useState('');
   const [dropoffLat, setDropoffLat] = useState<number | null>(null);
   const [dropoffLng, setDropoffLng] = useState<number | null>(null);
-  const [addressQuote, setAddressQuote] = useState<any>(null);
+  const [addressQuote, setAddressQuote] = useState<{
+    distanceKm: number;
+    totalPrice: number;
+    durationMinutes: number | null;
+    pricing: { baseFare: number; perKmRate: number; minimumFare: number };
+  } | null>(null);
   const [addressLoading, setAddressLoading] = useState(false);
+  const [addressError, setAddressError] = useState('');
+
+  const calculateAddressQuote = async () => {
+    if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng) {
+      setAddressError('Choose both a pickup and a drop-off address from the suggestions.');
+      return;
+    }
+
+    setAddressLoading(true);
+    setAddressError('');
+
+    try {
+      const { data } = await api.post('/orders/quote', {
+        pickupLat,
+        pickupLng,
+        dropoffLat,
+        dropoffLng
+      });
+      setAddressQuote(data);
+    } catch (err) {
+      setAddressError(apiError(err, 'Could not calculate that route. Please try again.'));
+    } finally {
+      setAddressLoading(false);
+    }
+  };
 
   const calculateQuote = () => {
     const dist = parseFloat(distance);
@@ -48,106 +80,75 @@ export default function QuotesPage() {
     });
   };
 
-  // Calculate quote using Google Maps Distance Matrix via API
-  const calculateAddressQuote = useCallback(async () => {
-    if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng) {
-      return;
-    }
-
-    setAddressLoading(true);
-    try {
-      const { data } = await api.post('/pricing/calculate', {
-        pickupLat,
-        pickupLng,
-        dropoffLat,
-        dropoffLng,
-      });
-
-      setAddressQuote({
-        distance: data.distance.km.toFixed(2),
-        distanceText: data.distance.text,
-        price: data.price.total.toFixed(2),
-        duration: data.duration.text,
-        breakdown: data.price.breakdown,
-      });
-    } catch (err) {
-      // Fallback to Haversine
-      const R = 6371;
-      const dLat = ((dropoffLat - pickupLat) * Math.PI) / 180;
-      const dLon = ((dropoffLng - pickupLng) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((pickupLat * Math.PI) / 180) *
-          Math.cos((dropoffLat * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const dist = R * c;
-      const price = Math.max(1000, 500 + dist * 120);
-
-      setAddressQuote({
-        distance: dist.toFixed(2),
-        distanceText: `${dist.toFixed(1)} km`,
-        price: price.toFixed(2),
-        duration: `~${Math.ceil((dist / 30) * 60)} mins`,
-        breakdown: {
-          baseFare: 500,
-          distanceFare: dist * 120,
-          perKmRate: 120,
-          minimumFare: 1000,
-        },
-      });
-    } finally {
-      setAddressLoading(false);
-    }
-  }, [pickupLat, pickupLng, dropoffLat, dropoffLng]);
-
   return (
     <>
       <Navbar />
       
       <main className="min-h-screen flex flex-col">
         {/* Hero Section */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-hero)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--brand)' }}>
           <div className="container" style={{ maxWidth: '1280px' }}>
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <div style={{ 
                 width: '100px', 
                 height: '100px',
-                background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                 borderRadius: '24px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 32px',
-                boxShadow: 'var(--shadow-glow)',
+                boxShadow: 'var(--shadow-md)',
                 fontSize: '48px',
                 color: 'white'
               }}>
-                <i className="fas fa-calculator"></i>
+                <Icon name="calculator" />
               </div>
               <h1 style={{ fontSize: '48px', fontWeight: 800, marginBottom: '24px', color: 'white' }}>
                 Get an Instant Quote
               </h1>
               <p style={{ fontSize: '20px', color: 'rgba(255,255,255,0.9)', maxWidth: '700px', margin: '0 auto' }}>
-                Calculate delivery costs by entering addresses or distance — transparent pricing, no hidden fees
+                Calculate delivery costs based on distance - transparent pricing, no hidden fees
               </p>
             </div>
           </div>
         </section>
 
         {/* Address-Based Calculator */}
-        <section className="py-8 px-4" style={{ background: 'var(--bg-secondary)' }}>
+        <section className="py-8 px-4" style={{ background: 'var(--bg-subtle)' }}>
           <div className="container" style={{ maxWidth: '1200px' }}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left: Address Inputs */}
-              <div className="card">
-                <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
-                  <i className="fas fa-map-marker-alt" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
-                  Quote by Address
-                </h2>
+            <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+              <h2 style={{ fontSize: '32px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                Quote by Address
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', marginTop: '8px', fontSize: '15px' }}>
+                Pick two addresses and we'll price the real road distance, not a straight line.
+              </p>
+            </div>
 
-                <div className="space-y-4">
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+                gap: '24px',
+                alignItems: 'start'
+              }}
+            >
+              {/* Left: address inputs + result */}
+              <div className="card">
+                <h3
+                  style={{
+                    fontSize: '20px',
+                    fontWeight: 600,
+                    marginBottom: '20px',
+                    color: 'var(--text-primary)'
+                  }}
+                >
+                  <Icon name="map-marker-alt" style={{ color: 'var(--brand)', marginRight: '8px' }} />
+                  Enter Your Addresses
+                </h3>
+
+                <div style={{ display: 'grid', gap: '16px' }}>
                   <GoogleAddressInput
                     value={pickupAddress}
                     onChange={(address, lat, lng) => {
@@ -160,97 +161,142 @@ export default function QuotesPage() {
                     showCurrentLocation={true}
                   />
 
-                  <div style={{ marginTop: '16px' }}>
-                    <GoogleAddressInput
-                      value={dropoffAddress}
-                      onChange={(address, lat, lng) => {
-                        setDropoffAddress(address);
-                        setDropoffLat(lat);
-                        setDropoffLng(lng);
-                      }}
-                      placeholder="Enter dropoff address"
-                      label="Dropoff Address"
-                    />
-                  </div>
+                  <GoogleAddressInput
+                    value={dropoffAddress}
+                    onChange={(address, lat, lng) => {
+                      setDropoffAddress(address);
+                      setDropoffLat(lat);
+                      setDropoffLng(lng);
+                    }}
+                    placeholder="Enter drop-off address"
+                    label="Drop-off Address"
+                  />
+                </div>
 
-                  <button
-                    onClick={calculateAddressQuote}
-                    disabled={!pickupLat || !dropoffLat || addressLoading}
-                    className="btn btn-primary btn-lg"
-                    style={{ width: '100%', marginTop: '16px' }}
-                  >
-                    {addressLoading ? (
-                      <><i className="fas fa-spinner fa-spin"></i> Calculating...</>
-                    ) : (
-                      <><i className="fas fa-route"></i> Get Accurate Quote</>
-                    )}
-                  </button>
+                <button
+                  onClick={calculateAddressQuote}
+                  disabled={!pickupLat || !dropoffLat || addressLoading}
+                  className="btn btn-primary btn-lg"
+                  style={{ width: '100%', marginTop: '20px', opacity: !pickupLat || !dropoffLat ? 0.6 : 1 }}
+                >
+                  <Icon name="road" /> {addressLoading ? 'Calculating...' : 'Get Accurate Quote'}
+                </button>
 
-                  {/* Address-based Quote Result */}
-                  {addressQuote && (
-                    <div style={{
+                {addressError && (
+                  <p style={{ color: 'var(--danger)', fontSize: '13px', marginTop: '12px' }}>
+                    <Icon name="info-circle" style={{ marginRight: '6px' }} />
+                    {addressError}
+                  </p>
+                )}
+
+                {addressQuote && (
+                  <div
+                    style={{
                       marginTop: '24px',
                       padding: '24px',
-                      background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                      background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                       borderRadius: '16px',
                       color: 'white'
-                    }}>
-                      <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-                        <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Estimated Price</p>
-                        <p style={{ fontSize: '48px', fontWeight: 800 }}>₦{parseFloat(addressQuote.price).toLocaleString()}</p>
-                        <p style={{ fontSize: '16px', opacity: 0.9 }}>
-                          {addressQuote.distanceText} • {addressQuote.duration}
-                        </p>
-                      </div>
-
-                      <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '16px' }}>
-                        <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', opacity: 0.9 }}>Price Breakdown:</p>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                          <span>Base Fare</span>
-                          <span>₦{(addressQuote.breakdown.baseFare || 500).toLocaleString()}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '14px' }}>
-                          <span>Distance ({addressQuote.distance} km × ₦{addressQuote.breakdown.perKmRate || 120}/km)</span>
-                          <span>₦{(addressQuote.breakdown.distanceFare || 0).toFixed(0)}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.2)', fontSize: '16px', fontWeight: 600 }}>
-                          <span>Total</span>
-                          <span>₦{parseFloat(addressQuote.price).toLocaleString()}</span>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => router.push('/order')}
-                        style={{
-                          width: '100%',
-                          marginTop: '20px',
-                          padding: '14px',
-                          background: 'white',
-                          color: 'var(--primary)',
-                          border: 'none',
-                          borderRadius: '12px',
-                          fontSize: '16px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          transition: 'transform 0.2s ease'
-                        }}
-                        onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                        onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                      >
-                        <i className="fas fa-rocket"></i> Book This Delivery
-                      </button>
+                    }}
+                  >
+                    <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                      <p style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>Estimated Price</p>
+                      <p style={{ fontSize: '48px', fontWeight: 800 }}>₦{naira(addressQuote.totalPrice)}</p>
+                      <p style={{ fontSize: '15px', opacity: 0.9, marginTop: '6px' }}>
+                        {Number(addressQuote.distanceKm).toFixed(2)} km
+                        {addressQuote.durationMinutes
+                          ? ` • about ${Math.round(addressQuote.durationMinutes)} min drive`
+                          : ''}
+                      </p>
                     </div>
-                  )}
-                </div>
+
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: '16px' }}>
+                      <p style={{ fontSize: '14px', fontWeight: 600, marginBottom: '12px', opacity: 0.9 }}>
+                        Price Breakdown:
+                      </p>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: '8px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <span>Base Fare</span>
+                        <span>₦{naira(addressQuote.pricing.baseFare)}</span>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          marginBottom: '8px',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <span>
+                          Distance ({Number(addressQuote.distanceKm).toFixed(2)} km × ₦
+                          {naira(addressQuote.pricing.perKmRate)}/km)
+                        </span>
+                        <span>₦{naira(Math.max(0, addressQuote.totalPrice - addressQuote.pricing.baseFare))}</span>
+                      </div>
+                      <div
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          paddingTop: '8px',
+                          borderTop: '1px solid rgba(255,255,255,0.2)',
+                          fontSize: '16px',
+                          fontWeight: 600
+                        }}
+                      >
+                        <span>Total</span>
+                        <span>₦{naira(addressQuote.totalPrice)}</span>
+                      </div>
+                      {addressQuote.totalPrice <= addressQuote.pricing.minimumFare && (
+                        <p style={{ fontSize: '12px', marginTop: '12px', opacity: 0.85, fontStyle: 'italic' }}>
+                          * Minimum fare of ₦{naira(addressQuote.pricing.minimumFare)} applies
+                        </p>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => router.push('/order')}
+                      style={{
+                        width: '100%',
+                        marginTop: '20px',
+                        padding: '14px',
+                        background: 'white',
+                        color: 'var(--brand)',
+                        border: 'none',
+                        borderRadius: '12px',
+                        fontSize: '16px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s ease'
+                      }}
+                      onMouseOver={(e) => (e.currentTarget.style.transform = 'scale(1.02)')}
+                      onMouseOut={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+                    >
+                      <Icon name="rocket" /> Book This Delivery
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Right: Map Preview */}
-              <div className="card" style={{ height: '500px', padding: '16px' }}>
-                <h3 className="font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
-                  <i className="fas fa-map" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
+              {/* Right: route preview */}
+              <div className="card" style={{ padding: '16px' }}>
+                <h3
+                  style={{
+                    fontSize: '20px',
+                    fontWeight: 600,
+                    marginBottom: '16px',
+                    color: 'var(--text-primary)'
+                  }}
+                >
+                  <Icon name="map-marker-alt" style={{ color: 'var(--brand)', marginRight: '8px' }} />
                   Route Preview
                 </h3>
-                <div style={{ height: 'calc(100% - 40px)' }}>
+                <div style={{ height: '420px', borderRadius: '12px', overflow: 'hidden' }}>
                   <MapPreview
                     pickupLat={pickupLat || undefined}
                     pickupLng={pickupLng || undefined}
@@ -258,6 +304,9 @@ export default function QuotesPage() {
                     dropoffLng={dropoffLng || undefined}
                   />
                 </div>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '12px' }}>
+                  The route and fare update as soon as both addresses are chosen.
+                </p>
               </div>
             </div>
           </div>
@@ -268,7 +317,7 @@ export default function QuotesPage() {
           <div className="container" style={{ maxWidth: '700px' }}>
             <div className="card">
               <h2 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '24px', color: 'var(--text-primary)' }}>
-                Quick Distance Calculator
+                Distance-Based Calculator
               </h2>
               
               <div style={{ marginBottom: '24px' }}>
@@ -286,7 +335,8 @@ export default function QuotesPage() {
                   style={{ fontSize: '18px' }}
                 />
                 <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                  <i className="fas fa-info-circle"></i> Don't know the distance? Use the address calculator above for accurate estimates
+                  <Icon name="info-circle" /> Don't know the distance? Use our{' '}
+                  <a href="/order" style={{ color: 'var(--brand)', fontWeight: 600 }}>order form</a> with address autocomplete
                 </p>
               </div>
 
@@ -295,14 +345,14 @@ export default function QuotesPage() {
                 className="btn btn-primary btn-lg"
                 style={{ width: '100%' }}
               >
-                <i className="fas fa-calculator"></i> Calculate Price
+                <Icon name="calculator" /> Calculate Price
               </button>
 
               {quote && (
                 <div style={{ 
                   marginTop: '32px',
                   padding: '24px',
-                  background: 'linear-gradient(135deg, var(--primary), var(--secondary))',
+                  background: 'linear-gradient(135deg, var(--brand), var(--brand-hover))',
                   borderRadius: '16px',
                   color: 'white'
                 }}>
@@ -343,7 +393,7 @@ export default function QuotesPage() {
                       marginTop: '20px',
                       padding: '14px',
                       background: 'white',
-                      color: 'var(--primary)',
+                      color: 'var(--brand)',
                       border: 'none',
                       borderRadius: '12px',
                       fontSize: '16px',
@@ -354,7 +404,7 @@ export default function QuotesPage() {
                     onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
                     onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
                   >
-                    <i className="fas fa-rocket"></i> Book This Delivery
+                    <Icon name="rocket" /> Book This Delivery
                   </button>
                 </div>
               )}
@@ -373,7 +423,7 @@ export default function QuotesPage() {
                 <div style={{ 
                   width: '56px',
                   height: '56px',
-                  background: 'var(--primary)',
+                  background: 'var(--brand)',
                   borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
@@ -382,7 +432,7 @@ export default function QuotesPage() {
                   fontSize: '24px',
                   marginBottom: '16px'
                 }}>
-                  <i className="fas fa-hand-holding-dollar"></i>
+                  <Icon name="hand-holding-dollar" />
                 </div>
                 <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                   Base Fare
@@ -396,7 +446,7 @@ export default function QuotesPage() {
                 <div style={{ 
                   width: '56px',
                   height: '56px',
-                  background: 'var(--secondary)',
+                  background: 'var(--brand-hover)',
                   borderRadius: '14px',
                   display: 'flex',
                   alignItems: 'center',
@@ -405,13 +455,13 @@ export default function QuotesPage() {
                   fontSize: '24px',
                   marginBottom: '16px'
                 }}>
-                  <i className="fas fa-road"></i>
+                  <Icon name="road" />
                 </div>
                 <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                   Per Kilometer
                 </h3>
                 <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: '1.6' }}>
-                  <strong>₦120 per km</strong> calculated based on actual driving distance via Google Maps
+                  <strong>₦120 per km</strong> calculated based on actual distance traveled
                 </p>
               </div>
 
@@ -428,7 +478,7 @@ export default function QuotesPage() {
                   fontSize: '24px',
                   marginBottom: '16px'
                 }}>
-                  <i className="fas fa-check-circle"></i>
+                  <Icon name="check-circle" />
                 </div>
                 <h3 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: 'var(--text-primary)' }}>
                   Minimum Fare
@@ -439,14 +489,14 @@ export default function QuotesPage() {
               </div>
             </div>
 
-            <div className="card" style={{ marginTop: '32px', padding: '24px', background: 'var(--bg-hero-overlay)' }}>
+            <div className="card" style={{ marginTop: '32px', padding: '24px', background: 'var(--brand-subtle)' }}>
               <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '16px', color: 'var(--text-primary)' }}>
-                <i className="fas fa-info-circle" style={{ color: 'var(--primary)' }}></i> Good to Know
+                <Icon name="info-circle" style={{ color: 'var(--brand)' }} /> Good to Know
               </h3>
               <ul style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: '1.8', paddingLeft: '20px' }}>
                 <li>No hidden charges - the price you see is what you pay</li>
-                <li>Prices are calculated using Google Maps driving distance for accuracy</li>
-                <li>Actual price may vary slightly based on real-time traffic conditions</li>
+                <li>Prices shown are estimates based on straight-line distance</li>
+                <li>Actual price may vary slightly based on rider route</li>
                 <li>All packages up to ₦50,000 are automatically insured</li>
                 <li>Bulk discounts available for businesses - contact us</li>
               </ul>

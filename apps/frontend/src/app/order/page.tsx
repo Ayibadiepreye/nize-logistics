@@ -9,6 +9,7 @@ import FloatingWhatsApp from '@/components/FloatingWhatsApp';
 import GoogleAddressInput from '@/components/GoogleAddressInput';
 import MapPreview from '@/components/MapPreview';
 import api from '@/lib/api';
+import Icon from '@/components/Icon';
 
 // Dynamically import map to avoid SSR issues
 // No longer needed - using MapPreview directly
@@ -172,7 +173,7 @@ export default function CreateOrder() {
                       className="h-1 mx-2 transition-all"
                       style={{ 
                         flex: 1,
-                        background: s < step ? 'var(--primary)' : '#e5e7eb'
+                        background: s < step ? 'var(--brand)' : '#e5e7eb'
                       }}
                     />
                   )}
@@ -198,7 +199,7 @@ export default function CreateOrder() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="card">
                 <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                  <i className="fas fa-map-marker-alt" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
+                  <Icon name="map-marker-alt" style={{ color: 'var(--brand)', marginRight: '8px' }} />
                   Pickup & Delivery
                 </h2>
 
@@ -306,7 +307,7 @@ export default function CreateOrder() {
           {step === 2 && (
             <div className="card">
               <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                <i className="fas fa-user" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
+                <Icon name="user" style={{ color: 'var(--brand)', marginRight: '8px' }} />
                 Contact Information
               </h2>
 
@@ -393,7 +394,7 @@ export default function CreateOrder() {
           {step === 3 && (
             <div className="card">
               <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                <i className="fas fa-box" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
+                <Icon name="box" style={{ color: 'var(--brand)', marginRight: '8px' }} />
                 Package Details
               </h2>
 
@@ -427,7 +428,7 @@ export default function CreateOrder() {
           {step === 4 && (
             <div className="card">
               <h2 className="text-2xl font-bold mb-6 flex items-center" style={{ color: 'var(--text-primary)' }}>
-                <i className="fas fa-credit-card" style={{ color: 'var(--primary)', marginRight: '8px' }}></i>
+                <Icon name="credit-card" style={{ color: 'var(--brand)', marginRight: '8px' }} />
                 Payment Method
               </h2>
 

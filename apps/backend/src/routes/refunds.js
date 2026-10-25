@@ -3,12 +3,17 @@ import { db } from '../lib/db/index.js';
 import { orders } from '../lib/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { authenticate, requireRole } from '../middleware/auth.js';
+import { AUDIT, recordAudit } from '../lib/audit.js';
 import axios from 'axios';
 
 const router = express.Router();
 
+// Refund data is commercially sensitive — admin only, including the status read
+// which previously answered any authenticated caller (riders included).
+const adminOnly = [authenticate, requireRole(['admin', 'super_admin'])];
+
 // Process refund (admin only)
-router.post('/:orderId/refund', authenticate, requireRole(['admin', 'super_admin']), async (req, res, next) => {
+router.post('/:orderId/refund', adminOnly, async (req, res, next) => {
   try {
     const { orderId } = req.params;
 
@@ -50,7 +55,17 @@ router.post('/:orderId/refund', authenticate, requireRole(['admin', 'super_admin
         // Update order status
         await db.update(orders).set({
           paymentStatus: 'refunded',
+          updatedAt: new Date(),
         }).where(eq(orders.id, orderId));
+
+        await recordAudit({
+          actor: req.user,
+          action: AUDIT.REFUND,
+          entityType: 'order',
+          entityId: order.ticketId,
+          summary: `Refunded ₦${order.totalPrice} on ${order.ticketId}`,
+          req,
+        });
 
         res.json({
           success: true,
@@ -73,7 +88,7 @@ router.post('/:orderId/refund', authenticate, requireRole(['admin', 'super_admin
 });
 
 // Get refund status
-router.get('/:orderId/refund-status', authenticate, async (req, res, next) => {
+router.get('/:orderId/refund-status', adminOnly, async (req, res, next) => {
   try {
     const { orderId } = req.params;
 

@@ -41,7 +41,13 @@ export const users = pgTable('users', {
   // Stats
   totalDeliveries: integer('total_deliveries').default(0),
   totalAmount: decimal('total_amount', { precision: 12, scale: 2 }).default('0'),
-  
+
+  // Set when an admin resets someone's password — the account must choose a new
+  // one before it can be used again.
+  mustChangePassword: boolean('must_change_password').default(false).notNull(),
+  passwordChangedAt: timestamp('password_changed_at'),
+  lastLoginAt: timestamp('last_login_at'),
+
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -128,14 +134,36 @@ export const orders = pgTable('orders', {
 });
 
 // =============== REPORTS ===============
+// `reporterRole`/`reporterId` are nullable: recipients report problems through a
+// tokenised link without holding an account.
 export const reports = pgTable('reports', {
   id: uuid('id').defaultRandom().primaryKey(),
   orderId: uuid('order_id').references(() => orders.id).notNull(),
-  reporterRole: userRoleEnum('reporter_role').notNull(),
+  reporterRole: userRoleEnum('reporter_role'),
   reporterId: uuid('reporter_id').references(() => users.id),
+  reporterLabel: varchar('reporter_label', { length: 50 }),
   type: varchar('type', { length: 50 }).notNull(),
   description: text('description').notNull(),
   status: varchar('status', { length: 20 }).default('open').notNull(),
+  resolutionNotes: text('resolution_notes'),
+  resolvedAt: timestamp('resolved_at'),
+  resolvedBy: uuid('resolved_by').references(() => users.id),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// =============== AUDIT LOG ===============
+// Append-only record of privileged actions: assignments, credential changes,
+// suspensions, refunds and settings edits.
+export const auditLogs = pgTable('audit_logs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  actorId: uuid('actor_id').references(() => users.id),
+  actorLabel: varchar('actor_label', { length: 120 }),
+  action: varchar('action', { length: 80 }).notNull(),
+  entityType: varchar('entity_type', { length: 40 }),
+  entityId: varchar('entity_id', { length: 64 }),
+  summary: text('summary'),
+  metadata: jsonb('metadata'),
+  ipAddress: varchar('ip_address', { length: 60 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
@@ -173,6 +201,8 @@ export const platformSettings = pgTable('platform_settings', {
   declinedAlertThreshold: integer('declined_alert_threshold').default(3),
   autoOfflineMinutes: integer('auto_offline_minutes').default(2),
   recipientLinkActiveDays: integer('recipient_link_active_days').default(2),
+  maintenanceMode: boolean('maintenance_mode').default(false).notNull(),
+  maintenanceMessage: text('maintenance_message'),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
@@ -185,4 +215,13 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const ordersRelations = relations(orders, ({ one, many }) => ({
   assignedRider: one(users, { fields: [orders.assignedRiderId], references: [users.id] }),
   reports: many(reports),
+}));
+
+export const reportsRelations = relations(reports, ({ one }) => ({
+  order: one(orders, { fields: [reports.orderId], references: [orders.id] }),
+  reporter: one(users, { fields: [reports.reporterId], references: [users.id] }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  actor: one(users, { fields: [auditLogs.actorId], references: [users.id] }),
 }));

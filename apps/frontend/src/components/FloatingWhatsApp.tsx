@@ -1,3 +1,4 @@
+import Icon from '@/components/Icon';
 export default function FloatingWhatsApp() {
   return (
     <a 
@@ -7,7 +8,7 @@ export default function FloatingWhatsApp() {
       rel="noopener noreferrer"
       title="Need Instant Pickup? Chat Us!"
     >
-      <i className="fab fa-whatsapp"></i>
+      <Icon name="whatsapp" />
     </a>
   );
 }

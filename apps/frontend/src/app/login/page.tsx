@@ -1,162 +1,240 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import { LogIn, ShieldCheck } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import FloatingWhatsApp from '@/components/FloatingWhatsApp';
-import api from '@/lib/api';
-import Link from 'next/link';
-import { Truck, Eye, EyeOff, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react';
+import api, { apiError } from '@/lib/api';
+import { homeForRole, setSession, type AuthUser } from '@/lib/auth';
+import { Button, Card, Field, InlineAlert, Input } from '@/components/ui';
+import Icon from '@/components/Icon';
 
-export default function Login() {
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <Login />
+    </Suspense>
+  );
+}
+
+function Login() {
   const router = useRouter();
+  const params = useSearchParams();
+  const next = params.get('next');
+
+  const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Set after a successful sign-in when an admin has reset this password —
+  // the account must choose its own before it can go anywhere.
+  const [mustChange, setMustChange] = useState<{ user: AuthUser; currentPassword: string } | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const { data } = await api.post('/auth/login', formData);
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      const { data } = await api.post('/auth/login', form);
+      setSession(data.token, data.user);
 
-      if (data.user.role === 'admin' || data.user.role === 'super_admin') {
-        router.push('/admin');
-      } else if (data.user.role === 'rider') {
-        router.push('/rider');
-      } else {
-        router.push('/');
+      if (data.user.mustChangePassword) {
+        setMustChange({ user: data.user, currentPassword: form.password });
+        return;
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Invalid email or password. Please try again.');
+
+      router.push(next || homeForRole(data.user.role));
+    } catch (err) {
+      setError(apiError(err, 'Could not sign you in.'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (mustChange) {
+    return (
+      <ForcePasswordChange
+        currentPassword={mustChange.currentPassword}
+        onDone={() => router.push(next || homeForRole(mustChange.user.role))}
+      />
+    );
+  }
+
+  return (
+    <div className="shell">
+      <Navbar />
+
+      <main className="flex flex-1 items-center justify-center px-4 py-14">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-6 text-center">
+            <div className="logo-icon mx-auto mb-4" style={{ width: 46, height: 46, fontSize: 20 }}>
+              <Icon name="truck-fast" />
+            </div>
+            <h1 className="text-[24px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Sign in
+            </h1>
+            <p className="mt-1 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+              For riders and administrators
+            </p>
+          </div>
+
+          <Card className="card-pad">
+            <form onSubmit={submit} className="space-y-4">
+              {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+
+              <Field label="Email or username" required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="text"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    placeholder="you@nizelogistics.com"
+                    autoComplete="username"
+                    required
+                    autoFocus
+                  />
+                )}
+              </Field>
+
+              <Field label="Password" required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => setForm({ ...form, password: e.target.value })}
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    required
+                  />
+                )}
+              </Field>
+
+              <Button type="submit" variant="primary" size="lg" block loading={loading} icon={<LogIn size={15} />}>
+                Sign in
+              </Button>
+            </form>
+          </Card>
+
+          <p className="mt-5 text-center text-[13.5px]" style={{ color: 'var(--text-secondary)' }}>
+            Booking a delivery doesn&apos;t need an account —{' '}
+            <Link href="/order" style={{ color: 'var(--brand-text)', fontWeight: 600 }}>
+              book here
+            </Link>{' '}
+            or{' '}
+            <Link href="/track" style={{ color: 'var(--brand-text)', fontWeight: 600 }}>
+              track an order
+            </Link>
+            .
+          </p>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
+
+/** Blocks the session until a reset password is replaced by the account owner. */
+function ForcePasswordChange({
+  currentPassword,
+  onDone,
+}: {
+  currentPassword: string;
+  onDone: () => void;
+}) {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const mismatch = confirm.length > 0 && confirm !== newPassword;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      await api.post('/auth/change-password', { currentPassword, newPassword });
+      onDone();
+    } catch (err) {
+      setError(apiError(err, 'Could not update your password.'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
+    <div className="shell">
       <Navbar />
-      
-      <main className="min-h-screen flex flex-col justify-center py-12 px-4" style={{ background: 'var(--bg-secondary)' }}>
-        <div className="max-w-md w-full mx-auto">
-          {/* Main Login Card */}
-          <div
-            className="rounded-3xl p-8 md:p-10 border shadow-2xl space-y-6 backdrop-blur-md"
-            style={{
-              background: 'var(--bg-card)',
-              borderColor: 'var(--border-color)',
-            }}
-          >
-            {/* Header Icon & Title */}
-            <div className="text-center space-y-3">
-              <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-lg"
-                style={{
-                  background: 'linear-gradient(135deg, #0066ff 0%, #ff3366 100%)',
-                  boxShadow: '0 8px 24px rgba(0, 102, 255, 0.4)',
-                }}
-              >
-                <Truck className="w-8 h-8 text-white" />
-              </div>
-              <h1 className="text-2xl md:text-3xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                Welcome Back
-              </h1>
-              <p className="text-xs md:text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Sign in to your Nize Logistics control center
-              </p>
+      <main className="flex flex-1 items-center justify-center px-4 py-14">
+        <div className="w-full max-w-[400px]">
+          <div className="mb-6 text-center">
+            <div
+              className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl"
+              style={{ background: 'var(--warning-subtle)', color: 'var(--warning-text)' }}
+            >
+              <ShieldCheck size={22} />
             </div>
-
-            {/* Error Notification */}
-            {error && (
-              <div className="p-4 rounded-xl border bg-red-500/10 border-red-500/30 text-red-400 text-xs font-semibold flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></div>
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="input pl-10 text-xs font-medium w-full"
-                    placeholder="admin@nizelogistics.com"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold uppercase mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="input pl-10 pr-10 text-xs font-medium w-full"
-                    placeholder="Enter your secret password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors"
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-secondary)',
-                      cursor: 'pointer',
-                    }}
-                    title={showPassword ? 'Hide password' : 'Show password'}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="btn btn-primary btn-lg w-full font-bold shadow-lg"
-              >
-                {loading ? 'Authenticating...' : 'Sign In to Dashboard'}
-              </button>
-            </form>
-
-            <div className="pt-2 text-center">
-              <Link
-                href="/track"
-                className="text-xs font-bold text-blue-400 hover:text-blue-300 inline-flex items-center gap-1"
-              >
-                Looking to track a package? Click here <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
+            <h1 className="text-[22px] font-bold tracking-tight" style={{ color: 'var(--text-primary)' }}>
+              Choose a new password
+            </h1>
+            <p className="mt-1 text-[14px]" style={{ color: 'var(--text-secondary)' }}>
+              An administrator reset your password. Pick your own to continue.
+            </p>
           </div>
+
+          <Card className="card-pad">
+            <form onSubmit={submit} className="space-y-4">
+              {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+
+              <Field label="New password" hint="At least 8 characters, including a letter and a number." required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                    autoFocus
+                  />
+                )}
+              </Field>
+
+              <Field label="Confirm password" error={mismatch ? 'Passwords do not match' : undefined} required>
+                {(id) => (
+                  <Input
+                    id={id}
+                    type="password"
+                    value={confirm}
+                    invalid={mismatch}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                )}
+              </Field>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                block
+                loading={loading}
+                disabled={newPassword.length < 8 || mismatch}
+              >
+                Set password and continue
+              </Button>
+            </form>
+          </Card>
         </div>
       </main>
-
       <Footer />
-      <FloatingWhatsApp />
-    </>
+    </div>
   );
 }

@@ -1,942 +1,873 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import api from '@/lib/api';
-import { initSocket } from '@/lib/socket';
-import MapPreview from '@/components/MapPreview';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Package, DollarSign, CheckCircle, MapPin, Phone, Navigation, Zap,
-  TrendingUp, Mail, MessageSquare, Activity, Power, Clock, ChevronRight,
-  Menu, X, ExternalLink, LogOut, RefreshCw, AlertCircle, Search, Truck,
-  Compass, ShieldCheck, Check, Calendar, ArrowRight
+  Bike,
+  Camera,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Compass,
+  MapPin,
+  MessageSquare,
+  Navigation,
+  Package,
+  Phone,
+  Power,
+  Wallet,
 } from 'lucide-react';
+import { DashboardShell, RequireRole } from '@/components/AppShell';
+import MapPreview from '@/components/MapPreview';
+import api, { apiError } from '@/lib/api';
+import { getSocket } from '@/lib/socket';
+import { naira, relativeTime, timeOnly } from '@/lib/format';
+import { ORDER_STATUS, statusLabel } from '@/lib/orderStatus';
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Field,
+  InlineAlert,
+  Input,
+  Modal,
+  Skeleton,
+  StatusBadge,
+  Textarea,
+  useToast,
+} from '@/components/ui';
 
-type TabType = 'active' | 'performance' | 'history';
+export default function RiderPage() {
+  return (
+    <RequireRole roles={['rider']}>
+      <RiderDashboard />
+    </RequireRole>
+  );
+}
 
-export default function RiderDashboard() {
-  const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('active');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+interface DashboardData {
+  currentJob: any | null;
+  today: { deliveries: number; earnings: string };
+  week: { deliveries: number; earnings: string };
+  lifetime: { deliveries: number; earnings: string };
+  isOnline: boolean;
+  isBusy: boolean;
+}
 
-  const [stats, setStats] = useState<any>({
-    isOnline: false,
-    isBusy: false,
-    todayDeliveries: 0,
-    todayEarnings: '0.00',
-    totalDeliveries: 0,
-    totalAmount: '0.00',
-  });
-  const [currentJob, setCurrentJob] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
-  const [historySearch, setHistorySearch] = useState('');
-
+function RiderDashboard() {
+  const toast = useToast();
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const currentJobRef = useRef<any>(null);
-  const statsRef = useRef<any>(null);
+  const [pickupOpen, setPickupOpen] = useState(false);
+  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
 
-  useEffect(() => {
-    currentJobRef.current = currentJob;
-  }, [currentJob]);
+  // Kept in a ref so the geolocation timer always sees the live values without
+  // being torn down and rebuilt on every state change.
+  const stateRef = useRef({ isOnline: false, orderId: null as string | null });
 
-  useEffect(() => {
-    statsRef.current = stats;
-  }, [stats]);
-
-  useEffect(() => {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) {
-      router.push('/login');
-      return;
-    }
-
+  const load = useCallback(async () => {
     try {
-      const user = JSON.parse(userStr);
-      if (user?.role !== 'rider') {
-        router.push('/login');
-        return;
-      }
-      setCurrentUser(user);
-    } catch {
-      router.push('/login');
-      return;
-    }
-
-    loadDashboard();
-
-    const token = localStorage.getItem('token');
-    let socket: any = null;
-    let locationInterval: any = null;
-
-    if (token) {
-      socket = initSocket(token);
-
-      const handleNewJob = () => {
-        loadDashboard();
-      };
-
-      const handleStatusUpdate = () => {
-        loadDashboard();
-      };
-
-      socket.on('rider:new-job', handleNewJob);
-      socket.on('order:status-update', handleStatusUpdate);
-
-      // Broadcast GPS location periodically when online
-      locationInterval = setInterval(() => {
-        if (statsRef.current?.isOnline && navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const lat = position.coords.latitude;
-              const lng = position.coords.longitude;
-              const orderId = currentJobRef.current?.id;
-
-              if (socket && socket.connected) {
-                socket.emit('rider:location', { lat, lng, orderId });
-              } else {
-                // Fallback to REST endpoint if socket temporarily disconnected
-                api.post('/location/update', { lat, lng, orderId }).catch(() => {});
-              }
-            },
-            (error) => console.error('Location error:', error)
-          );
-        }
-      }, 10000);
-
-      return () => {
-        if (socket) {
-          socket.off('rider:new-job', handleNewJob);
-          socket.off('order:status-update', handleStatusUpdate);
-        }
-        if (locationInterval) {
-          clearInterval(locationInterval);
-        }
-      };
+      const { data } = await api.get('/rider/dashboard');
+      setData(data);
+      stateRef.current = { isOnline: data.isOnline, orderId: data.currentJob?.id ?? null };
+      setError('');
+    } catch (err) {
+      setError(apiError(err, 'Could not load your dashboard.'));
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  const loadDashboard = async () => {
-    setRefreshing(true);
-    try {
-      const [dashRes, historyRes] = await Promise.all([
-        api.get('/rider/dashboard').catch(() => ({ data: null })),
-        api.get('/rider/history?limit=50').catch(() => ({ data: { orders: [] } })),
-      ]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-      if (dashRes?.data) {
-        setStats({
-          isOnline: dashRes.data.isOnline ?? false,
-          isBusy: dashRes.data.isBusy ?? false,
-          todayDeliveries: dashRes.data.todayDeliveries ?? 0,
-          todayEarnings: dashRes.data.todayEarnings ?? '0.00',
-          totalDeliveries: dashRes.data.totalDeliveries ?? 0,
-          totalAmount: dashRes.data.totalAmount ?? '0.00',
-        });
-        setCurrentJob(dashRes.data.currentJob || null);
-      }
+  /**
+   * Live updates + location reporting.
+   *
+   * Mounted once. The old implementation re-ran on every stats change, which
+   * re-registered socket handlers each time and captured a stale `currentJob`
+   * in the interval closure, so positions were reported against the wrong job.
+   *
+   * The position ping is also what feeds the live map and the customer tracking
+   * page, so it is reported for the job currently held — `stateRef` is read on
+   * every tick precisely so a reassigned job can never report against the old
+   * order.
+   */
+  useEffect(() => {
+    const socket = getSocket();
 
-      setHistory(historyRes?.data?.orders || []);
-      setErrorMessage('');
-    } catch (error: any) {
-      console.error('Failed to load rider dashboard', error);
-      setErrorMessage(error?.response?.data?.error || 'Failed to load dashboard data.');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    const refresh = () => load();
+    socket.on('rider:new-job', refresh);
+    socket.on('rider:job-cancelled', refresh);
+    socket.on('rider:job-reassigned', refresh);
+    socket.on('order:status-update', refresh);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    router.push('/login');
-  };
+    const timer = setInterval(() => {
+      const { isOnline, orderId } = stateRef.current;
+      if (!isOnline || !navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          socket.emit('rider:location', {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            orderId,
+          });
+        },
+        // A denied permission fires on every tick; log once at debug level only.
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
+      );
+    }, 15000);
+
+    return () => {
+      socket.off('rider:new-job', refresh);
+      socket.off('rider:job-cancelled', refresh);
+      socket.off('rider:job-reassigned', refresh);
+      socket.off('order:status-update', refresh);
+      clearInterval(timer);
+    };
+  }, [load]);
 
   const toggleOnline = async () => {
-    setToggling(true);
+    if (!data) return;
+    setBusy(true);
     try {
-      const { data } = await api.post('/rider/toggle-online');
-      setStats((prev: any) => ({ ...prev, isOnline: data.isOnline }));
-      setSuccessMessage(data.isOnline ? 'You are now ONLINE and ready for jobs!' : 'You are now OFFLINE.');
-      setTimeout(() => setSuccessMessage(''), 3500);
-    } catch (error: any) {
-      console.error('Failed to toggle status', error);
-      alert(error.response?.data?.error || 'Failed to toggle online status');
+      const { data: res } = await api.post('/rider/toggle-online', { isOnline: !data.isOnline });
+      setData((prev) => (prev ? { ...prev, isOnline: res.isOnline } : prev));
+      stateRef.current.isOnline = res.isOnline;
+      toast(res.isOnline ? "You're online — jobs can reach you" : "You're offline", 'info');
+    } catch (err) {
+      toast(apiError(err, 'Could not change your status.'), 'error');
     } finally {
-      setToggling(false);
+      setBusy(false);
     }
   };
 
-  const acceptJob = async (orderId: string) => {
+  /**
+   * Deep link into the public tracking view for this job, so the rider can hand
+   * the customer a live position without leaving the app.
+   */
+  const openLiveTracking = (ticketId?: string) => {
+    if (!ticketId) return;
+    window.open(`/track/${encodeURIComponent(ticketId)}`, '_blank', 'noopener,noreferrer');
+  };
+
+  /** Drop a pin in Google Maps for an address the rider has to reach. */
+  const openNavigation = (address?: string) => {
+    if (!address) return;
+    window.open(
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
+  const act = async (path: string, body?: any, successMessage?: string) => {
+    setBusy(true);
     try {
-      await api.post(`/rider/accept/${orderId}`);
-      setSuccessMessage('Delivery accepted! Proceed to pickup location.');
-      setTimeout(() => setSuccessMessage(''), 4000);
-      loadDashboard();
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to accept job');
+      await api.post(path, body);
+      if (successMessage) toast(successMessage, 'success');
+      await load();
+      return true;
+    } catch (err) {
+      toast(apiError(err), 'error');
+      return false;
+    } finally {
+      setBusy(false);
     }
   };
-
-  const markPickedUp = async (orderId: string) => {
-    const estimatedTime = prompt('Estimated delivery duration in minutes (e.g. 25):', '25');
-    if (estimatedTime === null) return;
-
-    try {
-      const minutes = parseInt(estimatedTime) || 30;
-      const estimatedDeliveryTime = new Date(Date.now() + minutes * 60 * 1000).toISOString();
-      await api.post(`/rider/pickup/${orderId}`, { estimatedDeliveryTime });
-      setSuccessMessage('Package picked up! Safe transit to recipient.');
-      setTimeout(() => setSuccessMessage(''), 4000);
-      loadDashboard();
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to mark as picked up');
-    }
-  };
-
-  const markDelivered = async (orderId: string) => {
-    const notes = prompt('Delivery confirmation notes or recipient name (optional):');
-    if (notes === null) return;
-
-    try {
-      await api.post(`/rider/deliver/${orderId}`, { notes });
-      alert('🎉 Awesome job! Order successfully delivered.');
-      loadDashboard();
-    } catch (error: any) {
-      alert(error.response?.data?.error || 'Failed to mark as delivered');
-    }
-  };
-
-  const openNavigation = (address: string) => {
-    const encoded = encodeURIComponent(address);
-    window.open(`https://www.google.com/maps/search/?api=1&query=${encoded}`, '_blank');
-  };
-
-  const filteredHistory = useMemo(() => {
-    return history.filter((item) => {
-      const search = historySearch.toLowerCase();
-      return (
-        !historySearch ||
-        item.ticketId?.toLowerCase().includes(search) ||
-        item.pickupAddress?.toLowerCase().includes(search) ||
-        item.dropoffAddress?.toLowerCase().includes(search) ||
-        item.recipientName?.toLowerCase().includes(search)
-      );
-    });
-  }, [history, historySearch]);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-        <div className="text-center space-y-4">
-          <div className="spinner mx-auto"></div>
-          <p className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Loading Nize Rider Portal...</p>
-          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Connecting to dispatch network</p>
+      <DashboardShell title="My deliveries">
+        <div className="space-y-4">
+          <Skeleton style={{ height: 96, borderRadius: 14 }} />
+          <Skeleton style={{ height: 220, borderRadius: 14 }} />
         </div>
-      </div>
+      </DashboardShell>
     );
   }
 
-  return (
-    <div className="min-h-screen flex" style={{ background: 'var(--bg-primary)' }}>
-      {/* Mobile Sidebar Backdrop */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 lg:hidden"
-          style={{ background: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(4px)' }}
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+  if (error || !data) {
+    return (
+      <DashboardShell title="My deliveries">
+        <Card>
+          <ErrorState description={error} onRetry={load} />
+        </Card>
+      </DashboardShell>
+    );
+  }
 
-      {/* ================= SIDEBAR NAVIGATION ================= */}
-      <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 w-72 flex flex-col justify-between transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+  const job = data.currentJob;
+
+  return (
+    <DashboardShell
+      title="My deliveries"
+      subtitle={
+        data.isOnline
+          ? data.isBusy
+            ? 'On a delivery · GPS live'
+            : 'Online and available · GPS live'
+          : 'Offline'
+      }
+      actions={
+        <Button
+          variant={data.isOnline ? 'secondary' : 'primary'}
+          onClick={toggleOnline}
+          loading={busy}
+          icon={<Power size={15} />}
+        >
+          {data.isOnline ? 'Go offline' : 'Go online'}
+        </Button>
+      }
+    >
+      <div className="space-y-5">
+        {!data.isOnline && (
+          <InlineAlert tone="warning">
+            You are offline, so new deliveries will not be sent to you. Go online when you are ready to ride.
+          </InlineAlert>
+        )}
+
+        {/* Earnings stay a compact strip even on a phone — the live job below is
+            the reason a rider opens this screen, and must not be pushed off it. */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-4">
+          <EarningsTile
+            label="Today"
+            amount={data.today.earnings}
+            count={data.today.deliveries}
+            icon={<Wallet size={14} />}
+            highlight
+          />
+          <EarningsTile
+            label="This week"
+            amount={data.week.earnings}
+            count={data.week.deliveries}
+            icon={<Clock size={14} />}
+          />
+          <EarningsTile
+            label="All time"
+            amount={data.lifetime.earnings}
+            count={data.lifetime.deliveries}
+            icon={<CheckCircle2 size={14} />}
+          />
+        </div>
+
+        {job ? (
+          <ActiveJob
+            job={job}
+            busy={busy}
+            onAccept={() => act(`/rider/accept/${job.id}`, undefined, 'Delivery accepted')}
+            onDecline={() => setDeclineOpen(true)}
+            onPickup={() => setPickupOpen(true)}
+            onInTransit={() => act(`/rider/in-transit/${job.id}`, undefined, 'Marked as in transit')}
+            onDeliver={() => setDeliverOpen(true)}
+            onOpenTracking={() => openLiveTracking(job.ticketId)}
+            onOpenNavigation={openNavigation}
+          />
+        ) : (
+          <Card>
+            <EmptyState
+              icon={<Package size={20} />}
+              title="No delivery assigned"
+              description={
+                data.isOnline
+                  ? 'You are online and available. The next job assigned to you will appear here straight away.'
+                  : 'Go online to start receiving delivery requests.'
+              }
+              action={
+                !data.isOnline ? (
+                  <Button variant="primary" onClick={toggleOnline} loading={busy} icon={<Power size={15} />}>
+                    Go online
+                  </Button>
+                ) : undefined
+              }
+            />
+          </Card>
+        )}
+
+        <HistoryCard />
+      </div>
+
+      <PickupModal
+        open={pickupOpen}
+        busy={busy}
+        onClose={() => setPickupOpen(false)}
+        onSubmit={async (minutes) => {
+          const eta = minutes
+            ? new Date(Date.now() + minutes * 60 * 1000).toISOString()
+            : undefined;
+          const ok = await act(
+            `/rider/pickup/${job.id}`,
+            { estimatedDeliveryTime: eta },
+            'Package collected'
+          );
+          if (ok) setPickupOpen(false);
+        }}
+      />
+
+      <DeliverModal
+        open={deliverOpen}
+        busy={busy}
+        isCod={job?.paymentMethod === 'cod'}
+        onClose={() => setDeliverOpen(false)}
+        onSubmit={async ({ notes, proofUrl, cashCollected }) => {
+          const ok = await act(
+            `/rider/deliver/${job.id}`,
+            { notes, deliveryProofUrl: proofUrl, cashCollected },
+            'Delivery completed — nice work'
+          );
+          if (ok) setDeliverOpen(false);
+        }}
+      />
+
+      <ConfirmDialog
+        open={declineOpen}
+        onClose={() => setDeclineOpen(false)}
+        loading={busy}
+        onConfirm={async () => {
+          const ok = await act(`/rider/decline/${job.id}`, undefined, 'Delivery declined');
+          if (ok) setDeclineOpen(false);
+        }}
+        title="Decline this delivery"
+        confirmLabel="Decline"
+        message="The job goes back to dispatch for another rider. Repeated declines are visible to admins."
+      />
+    </DashboardShell>
+  );
+}
+
+/* ------------------------------------------------------------- fragments */
+
+function EarningsTile({
+  label,
+  amount,
+  count,
+  icon,
+  highlight,
+}: {
+  label: string;
+  amount: string;
+  count: number;
+  icon: React.ReactNode;
+  highlight?: boolean;
+}) {
+  return (
+    <div
+      className="kpi gap-0.5 p-3 sm:gap-1.5 sm:p-[18px]"
+      style={
+        highlight
+          ? { borderColor: 'var(--brand-border)', background: 'var(--brand-subtle)' }
+          : undefined
+      }
+    >
+      <div
+        className="kpi-icon mb-1 h-7 w-7 sm:h-[34px] sm:w-[34px]"
+        style={
+          highlight
+            ? { background: 'var(--brand)', color: '#fff' }
+            : { background: 'var(--bg-inset)', color: 'var(--text-secondary)' }
+        }
+        aria-hidden
+      >
+        {icon}
+      </div>
+      <div className="kpi-label text-[11.5px] sm:text-[12.5px]">{label}</div>
+      <div
+        className="kpi-value text-[17px] sm:text-[26px]"
+        style={{ color: highlight ? 'var(--brand-text)' : undefined }}
+      >
+        {naira(amount)}
+      </div>
+      <div className="kpi-meta text-[11px] sm:text-[12px]">
+        {count} deliver{count === 1 ? 'y' : 'ies'}
+      </div>
+    </div>
+  );
+}
+
+/** The live job card — one obvious next action, everything else secondary. */
+function ActiveJob({
+  job,
+  busy,
+  onAccept,
+  onDecline,
+  onPickup,
+  onInTransit,
+  onDeliver,
+  onOpenTracking,
+  onOpenNavigation,
+}: {
+  job: any;
+  busy: boolean;
+  onAccept: () => void;
+  onDecline: () => void;
+  onPickup: () => void;
+  onInTransit: () => void;
+  onDeliver: () => void;
+  onOpenTracking: () => void;
+  onOpenNavigation: (address?: string) => void;
+}) {
+  // Where the rider is headed right now decides which address and contact matter.
+  const headingToPickup = [ORDER_STATUS.ASSIGNED, ORDER_STATUS.ACCEPTED].includes(job.status);
+  const target = headingToPickup
+    ? { label: 'Pick up from', address: job.pickupAddress, lat: job.pickupLat, lng: job.pickupLng }
+    : { label: 'Deliver to', address: job.dropoffAddress, lat: job.dropoffLat, lng: job.dropoffLng };
+
+  const contact = headingToPickup
+    ? { name: job.senderName, phone: job.senderPhone, whatsapp: job.senderWhatsapp, role: 'Sender' }
+    : { name: job.recipientName, phone: job.recipientPhone, whatsapp: job.recipientWhatsapp, role: 'Recipient' };
+
+  const primary = {
+    [ORDER_STATUS.ASSIGNED]: { label: 'Accept delivery', onClick: onAccept },
+    [ORDER_STATUS.ACCEPTED]: { label: 'I have collected the package', onClick: onPickup },
+    [ORDER_STATUS.PICKED_UP]: { label: 'Start the journey', onClick: onInTransit },
+    [ORDER_STATUS.IN_TRANSIT]: { label: 'Complete delivery', onClick: onDeliver },
+  }[job.status as string];
+
+  return (
+    <Card style={{ overflow: 'hidden', boxShadow: 'var(--shadow-md)' }}>
+      {/* Branded header — this card is the whole point of the screen, so it
+          carries colour the rest of the page deliberately does not. */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 px-5 py-4"
         style={{
-          background: 'var(--bg-secondary)',
-          borderRight: '1px solid var(--border-color)',
+          background: 'linear-gradient(135deg, var(--blue-700) 0%, var(--blue-500) 100%)',
+          color: '#fff',
         }}
       >
         <div>
-          {/* Header & Branding */}
-          <div className="p-6 border-b" style={{ borderColor: 'var(--border-color)' }}>
-            <div className="flex items-center justify-between">
-              <Link href="/" className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{
-                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                    boxShadow: '0 4px 16px rgba(16, 185, 129, 0.4)',
-                  }}
-                >
-                  <Navigation className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-extrabold text-xl tracking-tight" style={{ color: '#0066ff' }}>Nize</span>
-                    <span className="font-bold text-xl tracking-tight" style={{ color: '#10b981' }}>Rider</span>
-                  </div>
-                  <span className="text-[11px] font-bold tracking-wider uppercase" style={{ color: 'var(--text-secondary)' }}>
-                    Dispatch Portal
-                  </span>
-                </div>
-              </Link>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden p-2 rounded-lg text-slate-400 hover:text-white"
-                style={{ background: 'transparent', border: 'none' }}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Rider Profile Card & Live Toggle */}
-            <div
-              className="mt-5 p-3.5 rounded-xl border space-y-3"
-              style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[16px] font-bold tracking-tight">{job.ticketId}</span>
+            <span
+              className="badge"
+              style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', borderColor: 'transparent' }}
             >
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white"
-                  style={{
-                    background: stats.isOnline
-                      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                      : 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
-                  }}
-                >
-                  {currentUser?.fullName?.charAt(0).toUpperCase() || 'R'}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-bold truncate" style={{ color: 'var(--text-primary)' }}>
-                    {currentUser?.fullName || 'Dispatch Rider'}
-                  </p>
-                  <p className="text-[11px] font-semibold capitalize" style={{ color: 'var(--text-secondary)' }}>
-                    {currentUser?.vehicleType || 'Motorcycle'} • {currentUser?.plateNumber || 'Rider'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Status Switcher Button */}
-              <button
-                onClick={toggleOnline}
-                disabled={toggling}
-                className="w-full btn btn-sm"
-                style={{
-                  background: stats.isOnline
-                    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                    : 'rgba(100, 116, 139, 0.2)',
-                  color: stats.isOnline ? '#ffffff' : 'var(--text-secondary)',
-                  border: stats.isOnline ? 'none' : '1px solid var(--border-color)',
-                }}
-              >
-                <Power className="w-3.5 h-3.5" />
-                <span>{toggling ? 'Updating...' : stats.isOnline ? 'ONLINE (Live)' : 'OFFLINE (Tap to Go Online)'}</span>
-              </button>
-            </div>
+              {statusLabel(job.status)}
+            </span>
           </div>
+          <p className="mt-0.5 text-[13px]" style={{ color: 'rgba(255,255,255,0.82)' }}>
+            {job.distanceKm} km · {job.paymentMethod === 'cod' ? 'Collect cash on delivery' : 'Paid online'}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[11px] uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.7)' }}>
+            You earn
+          </p>
+          <p className="text-[22px] font-bold tabular-nums">{naira(job.totalPrice)}</p>
+        </div>
+      </div>
 
-          {/* Navigation Links */}
-          <nav className="p-4 space-y-1.5">
-            {[
-              { id: 'active', label: 'Active Delivery', icon: Package, hasPing: !!currentJob },
-              { id: 'performance', label: 'Performance & Pay', icon: TrendingUp, extra: `₦${parseFloat(stats.todayEarnings || 0).toLocaleString()}` },
-              { id: 'history', label: 'Delivery History', icon: Clock, count: stats.totalDeliveries || history.length },
-            ].map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => { setActiveTab(item.id as TabType); setSidebarOpen(false); }}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-xs transition-all duration-200"
-                  style={{
-                    background: isActive ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : 'transparent',
-                    color: isActive ? '#ffffff' : 'var(--text-secondary)',
-                    boxShadow: isActive ? '0 4px 16px rgba(16, 185, 129, 0.3)' : 'none',
-                    border: 'none',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-4 h-4" />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.hasPing && (
-                    <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping"></span>
-                  )}
-                  {item.extra && (
-                    <span className="text-[11px] font-bold" style={{ color: isActive ? '#ffffff' : '#10b981' }}>
-                      {item.extra}
-                    </span>
-                  )}
-                  {item.count !== undefined && (
-                    <span
-                      className="text-[11px] px-2 py-0.5 rounded-full font-bold"
-                      style={{
-                        background: isActive ? 'rgba(255, 255, 255, 0.25)' : 'rgba(148, 163, 184, 0.15)',
-                        color: isActive ? '#ffffff' : 'var(--text-primary)',
-                      }}
-                    >
-                      {item.count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
+      <div className="space-y-4 p-5">
+        {/* The address that matters right now, big and actionable. */}
+        <div className="surface-inset p-4">
+          <p className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+            {target.label}
+          </p>
+          <p className="mt-1 text-[16px] font-semibold leading-snug" style={{ color: 'var(--text-primary)' }}>
+            {target.address}
+          </p>
+          <a
+            className="btn btn-outline btn-sm mt-3"
+            href={`https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Navigation size={14} />
+            Open in Maps
+          </a>
         </div>
 
-        {/* Sidebar Footer */}
-        <div className="p-4 border-t space-y-2" style={{ borderColor: 'var(--border-color)' }}>
-          <Link
-            href="/"
-            className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
-            style={{ color: 'var(--text-secondary)', background: 'transparent' }}
+        {/* Live road route between the two pins, drawn by the Directions API.
+            Falls back to a straight line if the route service is unavailable. */}
+        <div>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="text-[11.5px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+              Route
+            </p>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onOpenNavigation(target.address)}
+            >
+              <Compass size={13} />
+              Directions
+            </button>
+          </div>
+          <div
+            className="h-44 w-full overflow-hidden rounded-lg border sm:h-52"
+            style={{ borderColor: 'var(--border-subtle)' }}
           >
-            <ExternalLink className="w-4 h-4" />
-            <span>Public Site</span>
-          </Link>
-
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-bold transition-all"
-            style={{ color: '#ff4d7d', background: 'transparent', border: 'none', cursor: 'pointer' }}
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Sign Out</span>
-          </button>
+            <MapPreview
+              pickupLat={Number(job.pickupLat)}
+              pickupLng={Number(job.pickupLng)}
+              dropoffLat={Number(job.dropoffLat)}
+              dropoffLng={Number(job.dropoffLng)}
+              className="h-full w-full"
+            />
+          </div>
         </div>
-      </aside>
 
-      {/* ================= MAIN CONTENT AREA ================= */}
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-72">
-        {/* Top Control Bar */}
-        <header
-          className="sticky top-0 z-30 px-4 md:px-8 py-4 backdrop-blur-md border-b flex items-center justify-between gap-4"
-          style={{
-            background: 'var(--bg-card)',
-            borderColor: 'var(--border-color)',
-          }}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11.5px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+              {contact.role}
+            </p>
+            <p className="truncate text-[14px] font-semibold">{contact.name}</p>
+          </div>
+          <a className="btn btn-secondary btn-sm" href={`tel:${contact.phone}`}>
+            <Phone size={14} />
+            Call
+          </a>
+          {contact.whatsapp && (
+            <a
+              className="btn btn-secondary btn-sm"
+              href={`https://wa.me/${String(contact.whatsapp).replace(/\D/g, '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <MessageSquare size={14} />
+              WhatsApp
+            </a>
+          )}
+        </div>
+
+        {job.description && (
+          <div>
+            <p className="text-[11.5px] uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
+              Package
+            </p>
+            <p className="text-[13.5px]">{job.description}</p>
+          </div>
+        )}
+
+        {job.notes && <InlineAlert tone="warning">{job.notes}</InlineAlert>}
+
+        {/* The full route, secondary to the immediate destination. */}
+        <div className="flex items-start gap-2.5 text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+          <MapPin size={14} className="mt-0.5 shrink-0" />
+          <p>
+            {job.pickupAddress} <ChevronRight size={12} className="inline" /> {job.dropoffAddress}
+          </p>
+        </div>
+
+        {job.estimatedDeliveryTime && (
+          <p className="text-[13px]" style={{ color: 'var(--text-secondary)' }}>
+            You promised delivery by <strong>{timeOnly(job.estimatedDeliveryTime)}</strong>
+          </p>
+        )}
+      </div>
+
+      {primary && (
+        <div
+          className="flex flex-col gap-2 p-5 sm:flex-row-reverse"
+          style={{ borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-subtle)' }}
         >
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl border"
-              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'transparent' }}
-            >
-              <Menu className="w-5 h-5" />
-            </button>
-            <div>
-              <h1 className="text-xl md:text-2xl font-black capitalize tracking-tight" style={{ color: 'var(--text-primary)' }}>
-                {activeTab === 'active' && 'Active Delivery Job'}
-                {activeTab === 'performance' && 'Earnings & Performance'}
-                {activeTab === 'history' && 'Completed Deliveries'}
-              </h1>
-              <p className="text-xs hidden sm:block" style={{ color: 'var(--text-secondary)' }}>
-                Nize Dispatch Network • Port Harcourt
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* GPS Broadcast Status */}
-            <div
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold"
-              style={{
-                background: stats.isOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(100, 116, 139, 0.1)',
-                borderColor: stats.isOnline ? 'rgba(16, 185, 129, 0.3)' : 'var(--border-color)',
-                color: stats.isOnline ? '#10b981' : 'var(--text-secondary)',
-              }}
-            >
-              <div className={`w-2 h-2 rounded-full ${stats.isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}`}></div>
-              <span>{stats.isOnline ? 'GPS Live' : 'GPS Offline'}</span>
-            </div>
-
-            {/* Refresh */}
-            <button
-              onClick={loadDashboard}
-              disabled={refreshing}
-              className="p-2.5 rounded-xl border transition-all"
-              style={{ borderColor: 'var(--border-color)', color: 'var(--text-primary)', background: 'transparent', cursor: 'pointer' }}
-              title="Refresh Rider Dashboard"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            </button>
-
-            {/* Quick Status Toggle */}
-            <button
-              onClick={toggleOnline}
-              disabled={toggling}
-              className={`btn btn-sm ${stats.isOnline ? 'btn-success' : 'btn-outline'}`}
-            >
-              <Power className="w-4 h-4" />
-              <span>{stats.isOnline ? 'Go Offline' : 'Go Online'}</span>
-            </button>
-          </div>
-        </header>
-
-        {/* Notifications & Body Content */}
-        <div className="p-4 md:p-8 space-y-6">
-          {errorMessage && (
-            <div className="p-4 rounded-xl flex items-center gap-3 border bg-red-500/10 border-red-500/30 text-red-400 text-xs font-semibold">
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
-              <p>{errorMessage}</p>
-            </div>
+          <Button variant="primary" size="lg" block onClick={primary.onClick} loading={busy}>
+            {primary.label}
+          </Button>
+          {job.status === ORDER_STATUS.ASSIGNED && (
+            <Button variant="ghost" size="lg" onClick={onDecline} disabled={busy}>
+              Decline
+            </Button>
           )}
+        </div>
+      )}
 
-          {successMessage && (
-            <div className="p-4 rounded-xl flex items-center gap-3 border bg-green-500/10 border-green-500/30 text-green-400 text-xs font-semibold">
-              <CheckCircle className="w-5 h-5 flex-shrink-0" />
-              <p>{successMessage}</p>
-            </div>
-          )}
+      {/* The customer-facing live position for this job. */}
+      <div className="p-5 pt-0">
+        <button type="button" className="btn btn-outline btn-sm btn-block" onClick={onOpenTracking}>
+          <Navigation size={14} />
+          Open live tracking link
+        </button>
+      </div>
+    </Card>
+  );
+}
 
-          {/* ================= TAB 1: ACTIVE DELIVERY ================= */}
-          {activeTab === 'active' && (
-            <div className="space-y-6">
-              {currentJob ? (
-                <div className="space-y-6 max-w-4xl">
-                  {/* Hero Delivery Banner */}
-                  <div
-                    className="rounded-3xl p-6 md:p-8 text-white relative overflow-hidden shadow-2xl"
-                    style={{
-                      background: 'linear-gradient(135deg, #0066ff 0%, #00d9ff 100%)',
-                    }}
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[11px] font-black uppercase tracking-wider bg-white/20 px-3 py-1 rounded-full">
-                            Active Dispatch Order
-                          </span>
-                          <span className="text-[11px] font-mono font-bold bg-black/20 px-3 py-1 rounded-full">
-                            Ticket #{currentJob.ticketId}
-                          </span>
-                        </div>
-                        <h2 className="text-2xl md:text-3xl font-black mt-2">
-                          {currentJob.status === 'assigned' && 'New Job Assigned to You'}
-                          {currentJob.status === 'accepted' && 'En Route to Pickup'}
-                          {currentJob.status === 'picked_up' && 'Package In Transit to Dropoff'}
-                        </h2>
-                      </div>
+function PickupModal({
+  open,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (minutes: number | null) => void;
+}) {
+  const [minutes, setMinutes] = useState('30');
 
-                      <div className="text-right sm:border-l sm:pl-6 border-white/20">
-                        <span className="text-xs font-bold text-blue-100 uppercase block">Payout Earned</span>
-                        <span className="text-3xl md:text-4xl font-black">
-                          ₦{parseFloat(currentJob.totalPrice || 0).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+  useEffect(() => {
+    if (open) setMinutes('30');
+  }, [open]);
 
-                  {/* Progress Stepper */}
-                  <div
-                    className="rounded-2xl p-6 border"
-                    style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                  >
-                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                      <div className={`p-3 rounded-xl border ${currentJob.status ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 font-bold' : 'text-slate-500'}`}>
-                        <span className="block text-base mb-1">1</span>
-                        <span>Job Assigned</span>
-                      </div>
-                      <div className={`p-3 rounded-xl border ${['accepted', 'picked_up', 'delivered'].includes(currentJob.status) ? 'bg-blue-500/10 border-blue-500/30 text-blue-400 font-bold' : 'text-slate-500'}`}>
-                        <span className="block text-base mb-1">2</span>
-                        <span>Picked Up</span>
-                      </div>
-                      <div className={`p-3 rounded-xl border ${currentJob.status === 'delivered' ? 'bg-green-500/10 border-green-500/30 text-green-400 font-bold' : 'text-slate-500'}`}>
-                        <span className="block text-base mb-1">3</span>
-                        <span>Delivered</span>
-                      </div>
-                    </div>
-                  </div>
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Package collected"
+      description="Give the customer an estimate so they know when to expect you."
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={() => onSubmit(Number(minutes) || null)} loading={busy}>
+            Confirm pickup
+          </Button>
+        </>
+      }
+    >
+      <Field label="Estimated time to deliver" hint="Roughly how long the drop-off will take.">
+        {(id) => (
+          <div className="flex flex-wrap gap-2">
+            {['15', '30', '45', '60'].map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={`btn ${minutes === m ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setMinutes(m)}
+              >
+                {m} min
+              </button>
+            ))}
+            <Input
+              id={id}
+              type="number"
+              min="1"
+              max="480"
+              className="w-24"
+              value={minutes}
+              onChange={(e) => setMinutes(e.target.value)}
+              aria-label="Custom minutes"
+            />
+          </div>
+        )}
+      </Field>
+    </Modal>
+  );
+}
 
-                  {/* Route & Contact Details Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Route Details Card */}
-                    <div
-                      className="rounded-2xl p-6 border space-y-5"
-                      style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                    >
-                      <h3 className="font-bold text-sm flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                        <MapPin className="w-4 h-4 text-blue-400" />
-                        <span>Route Directions & Live GPS Map</span>
-                      </h3>
+function DeliverModal({
+  open,
+  busy,
+  isCod,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  busy: boolean;
+  isCod: boolean;
+  onClose: () => void;
+  onSubmit: (v: { notes: string; proofUrl?: string; cashCollected: boolean }) => void;
+}) {
+  const toast = useToast();
+  const [notes, setNotes] = useState('');
+  const [proofUrl, setProofUrl] = useState<string | undefined>();
+  const [cashCollected, setCashCollected] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-                      {/* Live Road Route Map */}
-                      <div className="w-full h-56 rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-color)' }}>
-                        <MapPreview
-                          pickupLat={parseFloat(currentJob.pickupLat)}
-                          pickupLng={parseFloat(currentJob.pickupLng)}
-                          dropoffLat={parseFloat(currentJob.dropoffLat)}
-                          dropoffLng={parseFloat(currentJob.dropoffLng)}
-                          className="w-full h-full"
-                        />
-                      </div>
+  useEffect(() => {
+    if (open) {
+      setNotes('');
+      setProofUrl(undefined);
+      setCashCollected(false);
+    }
+  }, [open]);
 
-                      <div className="space-y-4">
-                        {/* Pickup Point */}
-                        <div className="p-4 rounded-xl border space-y-2" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase text-green-400">📍 Pickup Location</span>
-                            <button
-                              onClick={() => openNavigation(currentJob.pickupAddress)}
-                              className="text-[11px] font-bold text-blue-400 hover:underline flex items-center gap-1"
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-                            >
-                              Maps Navigation <ExternalLink className="w-3 h-3" />
-                            </button>
-                          </div>
-                          <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{currentJob.pickupAddress}</p>
-                        </div>
+  const uploadProof = async (file: File) => {
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const { data } = await api.post('/upload/image', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setProofUrl(data.url);
+      toast('Proof of delivery attached', 'success');
+    } catch (err) {
+      toast(apiError(err, 'Could not upload that photo.'), 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
 
-                        {/* Dropoff Point */}
-                        <div className="p-4 rounded-xl border space-y-2" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-bold uppercase text-pink-400">🎯 Destination Dropoff</span>
-                            <button
-                              onClick={() => openNavigation(currentJob.dropoffAddress)}
-                              className="text-[11px] font-bold text-blue-400 hover:underline flex items-center gap-1"
-                              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
-                            >
-                              Maps Navigation <ExternalLink className="w-3 h-3" />
-                            </button>
-                          </div>
-                          <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{currentJob.dropoffAddress}</p>
-                        </div>
-                      </div>
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Complete this delivery"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="success"
+            onClick={() => onSubmit({ notes, proofUrl, cashCollected })}
+            loading={busy}
+            disabled={isCod && !cashCollected}
+          >
+            Mark as delivered
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {isCod && (
+          <label
+            className="flex cursor-pointer items-start gap-3 rounded-lg border p-3"
+            style={{
+              borderColor: cashCollected ? 'var(--success)' : 'var(--border-default)',
+              background: cashCollected ? 'var(--success-subtle)' : 'transparent',
+            }}
+          >
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={cashCollected}
+              onChange={(e) => setCashCollected(e.target.checked)}
+            />
+            <span>
+              <span className="block text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                I collected the cash payment
+              </span>
+              <span className="block text-[12.5px]" style={{ color: 'var(--text-secondary)' }}>
+                Required before a cash-on-delivery order can be closed.
+              </span>
+            </span>
+          </label>
+        )}
 
-                      {/* Package Description / Instructions */}
-                      {currentJob.description && (
-                        <div className="p-4 rounded-xl border bg-amber-500/5 border-amber-500/20 text-xs">
-                          <span className="font-bold text-amber-400 block mb-1">📦 Package Content / Instructions</span>
-                          <p style={{ color: 'var(--text-primary)' }}>{currentJob.description}</p>
-                          {currentJob.notes && <p className="text-slate-400 mt-1">Note: {currentJob.notes}</p>}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Contacts & Direct Action Calls */}
-                    <div
-                      className="rounded-2xl p-6 border space-y-5 flex flex-col justify-between"
-                      style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                    >
-                      <div className="space-y-4">
-                        <h3 className="font-bold text-sm flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                          <Phone className="w-4 h-4 text-green-400" />
-                          <span>Direct Client Contacts</span>
-                        </h3>
-
-                        {/* Sender Contact Card */}
-                        <div className="p-4 rounded-xl border space-y-3" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Sender / Merchant</span>
-                              <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{currentJob.senderName || 'Sender'}</p>
-                            </div>
-                            <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>{currentJob.senderPhone}</span>
-                          </div>
-
-                          <div className="flex gap-2">
-                            {currentJob.senderPhone && (
-                              <a
-                                href={`tel:${currentJob.senderPhone}`}
-                                className="flex-1 btn btn-outline btn-sm"
-                              >
-                                <Phone className="w-3.5 h-3.5 text-blue-400" /> Call Sender
-                              </a>
-                            )}
-                            {currentJob.senderWhatsapp && (
-                              <a
-                                href={`https://wa.me/${currentJob.senderWhatsapp.replace(/\D/g, '')}`}
-                                target="_blank"
-                                className="flex-1 btn btn-success btn-sm"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
-                              </a>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Recipient Contact Card */}
-                        <div className="p-4 rounded-xl border space-y-3" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Recipient Customer</span>
-                              <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{currentJob.recipientName || 'Recipient'}</p>
-                            </div>
-                            <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>{currentJob.recipientPhone}</span>
-                          </div>
-
-                          <div className="flex gap-2">
-                            {currentJob.recipientPhone && (
-                              <a
-                                href={`tel:${currentJob.recipientPhone}`}
-                                className="flex-1 btn btn-outline btn-sm"
-                              >
-                                <Phone className="w-3.5 h-3.5 text-blue-400" /> Call Recipient
-                              </a>
-                            )}
-                            {currentJob.recipientWhatsapp && (
-                              <a
-                                href={`https://wa.me/${currentJob.recipientWhatsapp.replace(/\D/g, '')}`}
-                                target="_blank"
-                                className="flex-1 btn btn-success btn-sm"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5" /> WhatsApp
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Primary Execution Buttons */}
-                      <div className="space-y-2 pt-4">
-                        {currentJob.status === 'assigned' && (
-                          <button
-                            onClick={() => acceptJob(currentJob.id)}
-                            className="btn btn-primary btn-lg w-full"
-                          >
-                            Accept Delivery Assignment
-                          </button>
-                        )}
-
-                        {currentJob.status === 'accepted' && (
-                          <button
-                            onClick={() => markPickedUp(currentJob.id)}
-                            className="btn btn-success btn-lg w-full"
-                          >
-                            Mark Package as Picked Up
-                          </button>
-                        )}
-
-                        {currentJob.status === 'picked_up' && (
-                          <button
-                            onClick={() => markDelivered(currentJob.id)}
-                            className="btn btn-accent btn-lg w-full"
-                          >
-                            Complete & Confirm Delivery
-                          </button>
-                        )}
-
-                        <a
-                          href={`/track/${currentJob.ticketId}`}
-                          target="_blank"
-                          className="btn btn-outline btn-sm w-full"
-                        >
-                          <Navigation className="w-4 h-4" /> Open Live Tracking Link
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Idle Radar Screen */
-                <div
-                  className="rounded-3xl p-12 text-center border space-y-6 max-w-2xl mx-auto"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                >
-                  <div className="relative w-28 h-28 mx-auto flex items-center justify-center">
-                    <div
-                      className="absolute inset-0 rounded-full"
-                      style={{
-                        background: stats.isOnline ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.1)',
-                      }}
-                    ></div>
-                    <div
-                      className="w-24 h-24 rounded-full flex items-center justify-center shadow-lg relative z-10"
-                      style={{
-                        background: stats.isOnline
-                          ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                          : 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
-                      }}
-                    >
-                      <Truck className="w-10 h-10 text-white" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h2 className="text-2xl font-black" style={{ color: 'var(--text-primary)' }}>
-                      {stats.isOnline ? 'Stand By for Incoming Orders' : 'You are Offline'}
-                    </h2>
-                    <p className="text-xs md:text-sm max-w-md mx-auto" style={{ color: 'var(--text-secondary)' }}>
-                      {stats.isOnline
-                        ? 'Your GPS coordinates are live. New delivery tickets across Port Harcourt will appear automatically.'
-                        : 'Switch to Online status whenever you are ready on your vehicle to start receiving delivery requests.'}
-                    </p>
-                  </div>
-
-                  {!stats.isOnline && (
-                    <button
-                      onClick={toggleOnline}
-                      disabled={toggling}
-                      className="btn btn-primary btn-lg"
-                    >
-                      <Power className="w-4 h-4 mr-2" />
-                      Go Online Now
-                    </button>
-                  )}
-                </div>
+        <Field label="Proof of delivery" hint="A photo of the package or the signature, if you have one.">
+          {(id) => (
+            <div className="flex items-center gap-3">
+              <label className="btn btn-outline" htmlFor={id}>
+                <Camera size={14} />
+                {proofUrl ? 'Replace photo' : 'Add photo'}
+              </label>
+              <input
+                id={id}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadProof(file);
+                }}
+              />
+              {uploading && <span className="spinner" />}
+              {proofUrl && !uploading && (
+                <Badge tone="success" dot>
+                  Attached
+                </Badge>
               )}
             </div>
           )}
+        </Field>
 
-          {/* ================= TAB 2: PERFORMANCE & EARNINGS ================= */}
-          {activeTab === 'performance' && (
-            <div className="space-y-6">
-              {/* 4 Performance Metric Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div
-                  className="rounded-2xl p-6 border space-y-2"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                >
-                  <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Today's Earnings</span>
-                  <p className="text-3xl font-black text-green-400">
-                    ₦{parseFloat(stats.todayEarnings || 0).toLocaleString()}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{stats.todayDeliveries || 0} trips completed today</p>
-                </div>
-
-                <div
-                  className="rounded-2xl p-6 border space-y-2"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                >
-                  <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Today's Deliveries</span>
-                  <p className="text-3xl font-black text-blue-400">
-                    {stats.todayDeliveries || 0}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Completed packages</p>
-                </div>
-
-                <div
-                  className="rounded-2xl p-6 border space-y-2"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                >
-                  <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>Career Deliveries</span>
-                  <p className="text-3xl font-black text-purple-400">
-                    {stats.totalDeliveries || 0}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Lifetime trips</p>
-                </div>
-
-                <div
-                  className="rounded-2xl p-6 border space-y-2"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-                >
-                  <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-secondary)' }}>All-Time Revenue</span>
-                  <p className="text-3xl font-black text-pink-400">
-                    ₦{parseFloat(stats.totalAmount || 0).toLocaleString()}
-                  </p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>Total dispatched</p>
-                </div>
-              </div>
-
-              {/* Rider Perks & Tips */}
-              <div
-                className="rounded-2xl p-6 border space-y-3"
-                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-              >
-                <h3 className="font-bold text-sm flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
-                  <ShieldCheck className="w-4 h-4 text-teal-400" />
-                  <span>Rider Best Practices & Bonus Milestones</span>
-                </h3>
-                <ul className="text-xs space-y-2 list-disc list-inside" style={{ color: 'var(--text-secondary)' }}>
-                  <li>Keep GPS location enabled when Online to prioritize nearby pickup dispatches.</li>
-                  <li>Confirm package contents and recipient phone number before starting transit.</li>
-                  <li>Contact recipient via WhatsApp or Call 5 minutes prior to dropoff.</li>
-                </ul>
-              </div>
-            </div>
+        <Field label="Delivery notes" hint="Anything worth recording — who received it, any issue.">
+          {(id) => (
+            <Textarea
+              id={id}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Handed to the receptionist"
+            />
           )}
-
-          {/* ================= TAB 3: HISTORY ================= */}
-          {activeTab === 'history' && (
-            <div className="space-y-6">
-              <div
-                className="rounded-2xl p-5 border flex items-center justify-between gap-4"
-                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-              >
-                <div className="relative w-full max-w-md">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-secondary)' }} />
-                  <input
-                    type="text"
-                    value={historySearch}
-                    onChange={(e) => setHistorySearch(e.target.value)}
-                    placeholder="Search past trips by ticket, route, client..."
-                    className="input pl-10 text-xs w-full"
-                  />
-                </div>
-                <span className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>{filteredHistory.length} trips</span>
-              </div>
-
-              <div
-                className="rounded-2xl p-6 border space-y-4"
-                style={{ background: 'var(--bg-card)', borderColor: 'var(--border-color)' }}
-              >
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b text-[11px] font-bold uppercase" style={{ borderColor: 'var(--border-color)', color: 'var(--text-secondary)' }}>
-                        <th className="pb-3">Ticket</th>
-                        <th className="pb-3">Pickup Address</th>
-                        <th className="pb-3">Dropoff Address</th>
-                        <th className="pb-3">Recipient</th>
-                        <th className="pb-3">Payout</th>
-                        <th className="pb-3">Date</th>
-                        <th className="pb-3 text-right">Track</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y text-xs" style={{ borderColor: 'var(--border-color)' }}>
-                      {filteredHistory.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="py-12 text-center" style={{ color: 'var(--text-secondary)' }}>
-                            <Clock className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                            <p className="font-bold text-xs">No delivery history recorded yet</p>
-                          </td>
-                        </tr>
-                      ) : (
-                        filteredHistory.map((item) => (
-                          <tr key={item.id} className="hover:bg-slate-500/5 transition-colors">
-                            <td className="py-4 font-mono font-bold text-blue-400">{item.ticketId}</td>
-                            <td className="py-4 max-w-[180px] font-bold truncate" style={{ color: 'var(--text-primary)' }}>{item.pickupAddress}</td>
-                            <td className="py-4 max-w-[180px] font-bold truncate" style={{ color: 'var(--text-primary)' }}>{item.dropoffAddress}</td>
-                            <td className="py-4" style={{ color: 'var(--text-primary)' }}>{item.recipientName || 'Recipient'}</td>
-                            <td className="py-4 font-bold text-green-400">₦{parseFloat(item.totalPrice || 0).toLocaleString()}</td>
-                            <td className="py-4" style={{ color: 'var(--text-secondary)' }}>
-                              {item.deliveredAt
-                                ? new Date(item.deliveredAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                                : item.createdAt
-                                ? new Date(item.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                                : 'Recent'}
-                            </td>
-                            <td className="py-4 text-right">
-                              <a
-                                href={`/track/${item.ticketId}`}
-                                target="_blank"
-                                className="btn btn-outline btn-sm"
-                              >
-                                View
-                              </a>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+        </Field>
       </div>
-    </div>
+    </Modal>
+  );
+}
+
+function HistoryCard() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    api
+      .get('/rider/history', { params: { limit: 20 } })
+      .then(({ data }) => {
+        setOrders(data.orders);
+        setSummary(data.summary);
+      })
+      .catch(() => setOrders([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const visible = expanded ? orders : orders.slice(0, 5);
+
+  return (
+    <Card>
+      <CardHeader
+        title="Delivery history"
+        subtitle={
+          summary
+            ? `${summary.delivered} completed · ${naira(summary.earnings)} earned`
+            : 'Your completed and cancelled jobs'
+        }
+      />
+      {loading ? (
+        <div className="space-y-2 p-5">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-10" />
+          ))}
+        </div>
+      ) : orders.length === 0 ? (
+        <EmptyState
+          icon={<Bike size={20} />}
+          title="No deliveries yet"
+          description="Once you complete your first delivery it will show up here with what you earned."
+        />
+      ) : (
+        <>
+          <ul className="divide-y" style={{ borderColor: 'var(--border-subtle)' }}>
+            {visible.map((o) => (
+              <li key={o.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                <div className="min-w-0">
+                  <p className="font-mono text-[13px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {o.ticketId}
+                  </p>
+                  <p className="truncate text-[12.5px]" style={{ color: 'var(--text-muted)' }}>
+                    {o.dropoffAddress}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <StatusBadge status={o.status} />
+                  <span className="w-20 text-right text-[13.5px] font-semibold tabular-nums">
+                    {naira(o.totalPrice)}
+                  </span>
+                  <span className="hidden w-24 text-right text-[12.5px] sm:block" style={{ color: 'var(--text-muted)' }}>
+                    {relativeTime(o.deliveredAt || o.createdAt)}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {orders.length > 5 && (
+            <div className="px-5 py-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+              <Button variant="ghost" size="sm" onClick={() => setExpanded((v) => !v)}>
+                {expanded ? 'Show less' : `Show all ${orders.length}`}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+    </Card>
   );
 }

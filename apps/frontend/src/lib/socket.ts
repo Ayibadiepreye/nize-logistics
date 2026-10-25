@@ -1,85 +1,66 @@
 import { io, Socket } from 'socket.io-client';
+import { getToken } from './auth';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:10000';
 
 let socket: Socket | null = null;
+let currentToken: string | null = null;
 
 /**
- * Initialize authenticated socket connection (for riders/admins)
+ * Returns the shared socket, creating it on first use.
+ *
+ * Passing no token opens an anonymous connection, which the server allows so
+ * the public tracking page can receive live updates. The previous version
+ * returned a stale socket whenever `connected` was momentarily false, which
+ * left dashboards stacking duplicate listeners on every re-render.
  */
-export function initSocket(token: string) {
-  if (socket?.connected) {
-    return socket;
+export function getSocket(token?: string | null): Socket {
+  const authToken = token ?? getToken();
+
+  // Rebuild if the identity changed (sign-in, sign-out, account switch).
+  if (socket && currentToken !== authToken) {
+    socket.disconnect();
+    socket = null;
   }
 
-  socket = io(SOCKET_URL, {
-    auth: token ? { token } : {},
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-  });
+  if (!socket) {
+    currentToken = authToken;
+    socket = io(SOCKET_URL, {
+      auth: authToken ? { token: authToken } : {},
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 8,
+      reconnectionDelay: 1000,
+    });
 
-  socket.on('connect', () => {
-    console.log('✅ Socket connected');
-  });
-
-  socket.on('disconnect', () => {
-    console.log('❌ Socket disconnected');
-  });
-
-  socket.on('connect_error', (error) => {
-    console.error('Socket connection error:', error.message);
-  });
-
-  socket.on('reconnect', (attemptNumber: number) => {
-    console.log(`🔄 Socket reconnected after ${attemptNumber} attempts`);
-  });
+    socket.on('connect_error', (error) => {
+      console.warn('[socket] connection error:', error.message);
+    });
+  }
 
   return socket;
 }
 
-/**
- * Initialize public socket connection for tracking (no auth required)
- */
-export function initPublicSocket() {
-  // Reuse existing socket if available
-  if (socket?.connected) {
-    return socket;
-  }
-
-  socket = io(SOCKET_URL, {
-    // No auth token — backend allows guest connections for tracking
-    transports: ['websocket', 'polling'],
-    reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 2000,
-  });
-
-  socket.on('connect', () => {
-    console.log('✅ Public socket connected (tracking)');
-  });
-
-  socket.on('disconnect', () => {
-    console.log('❌ Public socket disconnected');
-  });
-
-  socket.on('connect_error', (error) => {
-    console.error('Public socket error:', error.message);
-  });
-
-  return socket;
+/** Backwards-compatible alias. */
+export function initSocket(token: string): Socket {
+  return getSocket(token);
 }
 
-export function getSocket() {
-  return socket;
+/**
+ * Public tracking connection — deliberately unauthenticated.
+ *
+ * The backend admits anonymous sockets so a customer following a ticket id can
+ * receive live position updates. Calling this with a stored token would hand
+ * that customer's socket an authenticated identity, so the token is dropped.
+ */
+export function initPublicSocket(): Socket {
+  return getSocket(null);
 }
 
 export function disconnectSocket() {
   if (socket) {
     socket.disconnect();
     socket = null;
+    currentToken = null;
   }
 }
 

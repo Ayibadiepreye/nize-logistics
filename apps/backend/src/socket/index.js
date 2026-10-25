@@ -1,131 +1,159 @@
 import jwt from 'jsonwebtoken';
 import { db } from '../lib/db/index.js';
-import { users } from '../lib/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { users, orders } from '../lib/db/schema.js';
+import { eq, sql } from 'drizzle-orm';
+import { ACTIVE_RIDER_STATUSES } from '../lib/orderStatus.js';
 
-const connectedUsers = new Map(); // userId -> socket
-
+/**
+ * Realtime layer.
+ *
+ * Two classes of connection:
+ *   - Authenticated staff (riders, admins) get their personal and role rooms.
+ *   - Anonymous customers may connect and follow a single order, but only by
+ *     presenting a ticket id that actually exists.
+ *
+ * Previously the handshake required a token, so the public tracking page could
+ * never receive live updates at all; and any signed-in user could join any
+ * order room just by guessing a UUID.
+ */
 export function setupSocket(io) {
-  // Authentication middleware — allows unauthenticated connections for public tracking
   io.use(async (socket, next) => {
+    const token = socket.handshake.auth?.token || socket.handshake.query?.token;
+
+    // Anonymous connections are allowed — they simply have no rooms of their own.
+    if (!token) {
+      socket.isAnonymous = true;
+      return next();
+    }
+
     try {
-      const token = socket.handshake.auth.token || socket.handshake.query.token;
-
-      if (!token) {
-        // Allow unauthenticated connections for public tracking (read-only)
-        socket.userId = null;
-        socket.userRole = 'guest';
-        socket.isGuest = true;
-        return next();
-      }
-
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const [user] = await db.select().from(users).where(eq(users.id, decoded.userId));
+      const [user] = await db.select().from(users).where(eq(users.id, decoded.userId)).limit(1);
 
-      if (!user) {
-        // Allow as guest instead of rejecting
-        socket.userId = null;
-        socket.userRole = 'guest';
-        socket.isGuest = true;
-        return next();
+      if (!user || user.status !== 'active') {
+        return next(new Error('Account is not active'));
       }
 
       socket.userId = user.id;
       socket.userRole = user.role;
-      socket.isGuest = false;
+      socket.isAnonymous = false;
       next();
-    } catch (error) {
-      // On auth error, allow as guest for public tracking
-      socket.userId = null;
-      socket.userRole = 'guest';
-      socket.isGuest = true;
-      next();
+    } catch {
+      next(new Error('Invalid session token'));
     }
   });
 
   io.on('connection', (socket) => {
-    if (socket.isGuest) {
-      console.log(`📡 Guest socket connected (tracking only)`);
+    if (socket.isAnonymous) {
+      console.log('📡 Anonymous socket connected (order tracking only)');
     } else {
       console.log(`✅ Socket connected: ${socket.userId} (${socket.userRole})`);
-      connectedUsers.set(socket.userId, socket);
-
-      // Join user's personal room
       socket.join(`user:${socket.userId}`);
-
-      // Join role-based room
       socket.join(`role:${socket.userRole}`);
     }
 
-    // Rider location update (authenticated riders only)
+    /**
+     * Rider position ping. Persisted so the admin map and tracking page can
+     * show a last-known location, and relayed live to whoever is watching the
+     * order.
+     */
     socket.on('rider:location', async (data) => {
-      if (socket.isGuest || socket.userRole !== 'rider') return;
+      if (socket.userRole !== 'rider') return;
 
-      const { lat, lng, orderId } = data;
+      const lat = Number(data?.lat);
+      const lng = Number(data?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
       try {
-        // Update rider location in database
-        await db.update(users)
-          .set({ currentLat: lat, currentLng: lng, lastSeen: new Date() })
+        await db
+          .update(users)
+          .set({ currentLat: String(lat), currentLng: String(lng), lastSeen: new Date() })
           .where(eq(users.id, socket.userId));
 
-        // Broadcast to order room if rider is on a delivery
-        if (orderId) {
-          io.to(`order:${orderId}`).emit('rider:location-update', {
-            riderId: socket.userId,
-            lat,
-            lng,
-            timestamp: new Date().toISOString(),
-          });
+        if (data?.orderId) {
+          // Only broadcast a position for a job this rider actually holds.
+          const [order] = await db
+            .select({ id: orders.id, riderId: orders.assignedRiderId, status: orders.status })
+            .from(orders)
+            .where(eq(orders.id, data.orderId))
+            .limit(1);
+
+          if (order?.riderId === socket.userId && ACTIVE_RIDER_STATUSES.includes(order.status)) {
+            io.to(`order:${order.id}`).emit('rider:location-update', {
+              riderId: socket.userId,
+              lat,
+              lng,
+              timestamp: new Date().toISOString(),
+            });
+          }
         }
 
-        // Broadcast to admin room for fleet tracking
+        // Fleet view: admins watch every rider's position on the live map.
         io.to('role:admin').to('role:super_admin').emit('rider:fleet-update', {
           riderId: socket.userId,
           lat,
           lng,
-          orderId,
+          orderId: data?.orderId ?? null,
           timestamp: new Date().toISOString(),
         });
       } catch (error) {
-        console.error('Rider location update error:', error.message);
+        console.error('[socket] location update failed:', error.message);
       }
     });
 
-    // Join order room (for tracking) — allowed for all including guests
-    socket.on('order:subscribe', (orderId) => {
-      socket.join(`order:${orderId}`);
-      console.log(`${socket.isGuest ? 'Guest' : `User ${socket.userId}`} subscribed to order ${orderId}`);
+    /**
+     * Follow an order. Accepts a ticket id (public tracking page) or an order
+     * id from staff, and always verifies the order exists before joining.
+     */
+    socket.on('order:subscribe', async (payload, ack) => {
+      try {
+        const raw = typeof payload === 'string' ? payload : (payload?.ticketId ?? payload?.orderId ?? '');
+        const value = String(raw).trim();
+        if (!value) return;
+
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+
+        const [order] = await db
+          .select({ id: orders.id })
+          .from(orders)
+          .where(isUuid ? eq(orders.id, value) : eq(sql`upper(${orders.ticketId})`, value.toUpperCase()))
+          .limit(1);
+
+        if (!order) {
+          if (typeof ack === 'function') ack({ ok: false });
+          return;
+        }
+
+        socket.join(`order:${order.id}`);
+        if (typeof ack === 'function') ack({ ok: true, orderId: order.id });
+      } catch (error) {
+        console.error('[socket] subscribe failed:', error.message);
+        if (typeof ack === 'function') ack({ ok: false });
+      }
     });
 
-    // Leave order room
     socket.on('order:unsubscribe', (orderId) => {
-      socket.leave(`order:${orderId}`);
+      if (orderId) socket.leave(`order:${orderId}`);
     });
 
-    // Disconnect
     socket.on('disconnect', () => {
-      if (!socket.isGuest) {
+      if (!socket.isAnonymous) {
         console.log(`❌ Socket disconnected: ${socket.userId}`);
-        connectedUsers.delete(socket.userId);
       }
     });
   });
 
-  console.log('📡 Socket.io event handlers registered');
+  console.log('📡 Socket.io handlers registered');
 }
 
-// Helper to emit to specific user
 export function emitToUser(io, userId, event, data) {
   io.to(`user:${userId}`).emit(event, data);
 }
 
-// Helper to emit to all admins
 export function emitToAdmins(io, event, data) {
   io.to('role:admin').to('role:super_admin').emit(event, data);
 }
 
-// Helper to emit to order room
 export function emitToOrder(io, orderId, event, data) {
   io.to(`order:${orderId}`).emit(event, data);
 }
