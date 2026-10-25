@@ -25,6 +25,7 @@ import uploadRouter from './routes/upload.js';
 import refundsRouter from './routes/refunds.js';
 import pricingRouter from './routes/pricing.js';
 import locationRouter from './routes/location.js';
+import locationsRouter from './routes/locations.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -78,7 +79,8 @@ app.get('/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     service: 'Nize Logistics API',
-    googleMaps: !!process.env.GOOGLE_MAPS_API_KEY,
+    routing: process.env.OSRM_URL || 'osrm-public',
+    places: 'own-cache',
   });
 });
 
@@ -115,6 +117,7 @@ app.use('/api/upload', uploadRouter);
 app.use('/api/refunds', refundsRouter);
 app.use('/api/pricing', pricingRouter);
 app.use('/api/location', locationRouter);
+app.use('/api/locations', locationsRouter);
 
 /* ---------------------------------------------------- 404 + error handler */
 
@@ -154,7 +157,7 @@ async function start() {
     console.log(`📡 Socket.io ready`);
     console.log(`🌍 Allowed origins: ${allowedOrigins.join(', ')}`);
     console.log(`💳 Paystack: ${process.env.PAYSTACK_SECRET_KEY ? 'configured' : 'NOT configured'}`);
-    console.log(`🗺️  Google Maps: ${process.env.GOOGLE_MAPS_API_KEY ? 'configured' : 'NOT configured'}`);
+    console.log(`🧭 Routing: ${process.env.OSRM_URL || 'OSRM public demo'}`);
     console.log(`📧 Email: ${process.env.EMAIL_SERVICE || 'not set'} (${process.env.EMAIL_FROM || 'no sender'})`);
     console.log(`\n...Plenty Waka 🚚\n`);
   });

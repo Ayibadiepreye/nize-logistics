@@ -5,7 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import { lookupLimiter } from '../middleware/rateLimit.js';
 import { trackingOrder } from '../lib/serialize.js';
 import { ACTIVE_RIDER_STATUSES } from '../lib/orderStatus.js';
-import { getDirections } from '../lib/google-maps.js';
+import { getDirections } from '../lib/routing.js';
 
 const router = express.Router();
 
@@ -75,9 +75,11 @@ router.get('/:ticketId', lookupLimiter, async (req, res, next) => {
         );
         if (directions) {
           route = {
-            polyline: directions.polyline,
+            geometry: directions.geometry,
             distanceText: directions.distanceText,
             durationText: directions.durationText,
+            source: directions.source,
+            note: directions.note,
           };
         }
       } catch (error) {

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { DashboardShell, RequireRole } from '@/components/AppShell';
 import MapPreview from '@/components/MapPreview';
+import { getCurrentPosition } from '@/lib/plusCode';
 import api, { apiError } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import { naira, relativeTime, timeOnly } from '@/lib/format';
@@ -171,6 +172,47 @@ function RiderDashboard() {
     );
   };
 
+  /**
+   * Confirm the exact point of the place the rider is at, and store it.
+   *
+   * This is the flywheel: every confirmed point becomes a place the next
+   * customer in that area can pick instead of dropping a fresh pin. Over time
+   * the platform builds its own map of the places that actually get delivered
+   * to — the one asset a competitor cannot copy.
+   */
+  const capturePlace = async () => {
+    if (!job) return;
+
+    const headingToPickup = [ORDER_STATUS.ASSIGNED, ORDER_STATUS.ACCEPTED].includes(job.status);
+    const target = headingToPickup
+      ? { label: job.pickupLabel, lat: job.pickupLat, lng: job.pickupLng }
+      : { label: job.dropoffLabel, lat: job.dropoffLat, lng: job.dropoffLng };
+
+    setBusy(true);
+    try {
+      const captured = await getCurrentPosition();
+      const name = target.label?.trim() || 'Delivery point';
+
+      await api.post('/rider/locations/capture', {
+        orderId: job.id,
+        label: name,
+        lat: captured.lat,
+        lng: captured.lng,
+        plusCode: captured.plusCode,
+      });
+
+      toast(`Place saved — ${captured.plusCode}`, 'success');
+    } catch (err: any) {
+      // A failed capture must never block a delivery, so this is a warning.
+      toast(
+        err?.friendly || err?.response?.data?.error || 'Could not save this place',
+        'error'
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const act = async (path: string, body?: any, successMessage?: string) => {
     setBusy(true);
     try {
@@ -272,6 +314,7 @@ function RiderDashboard() {
             onDeliver={() => setDeliverOpen(true)}
             onOpenTracking={() => openLiveTracking(job.ticketId)}
             onOpenNavigation={openNavigation}
+            onCapturePlace={capturePlace}
           />
         ) : (
           <Card>
@@ -405,6 +448,7 @@ function ActiveJob({
   onDeliver,
   onOpenTracking,
   onOpenNavigation,
+  onCapturePlace,
 }: {
   job: any;
   busy: boolean;
@@ -415,12 +459,27 @@ function ActiveJob({
   onDeliver: () => void;
   onOpenTracking: () => void;
   onOpenNavigation: (address?: string) => void;
+  onCapturePlace: () => void;
 }) {
   // Where the rider is headed right now decides which address and contact matter.
   const headingToPickup = [ORDER_STATUS.ASSIGNED, ORDER_STATUS.ACCEPTED].includes(job.status);
   const target = headingToPickup
-    ? { label: 'Pick up from', address: job.pickupAddress, lat: job.pickupLat, lng: job.pickupLng }
-    : { label: 'Deliver to', address: job.dropoffAddress, lat: job.dropoffLat, lng: job.dropoffLng };
+    ? {
+        label: 'Pick up from',
+        address: job.pickupAddress,
+        lat: job.pickupLat,
+        lng: job.pickupLng,
+        placeName: job.pickupLabel,
+        plusCode: job.pickupPlusCode,
+      }
+    : {
+        label: 'Deliver to',
+        address: job.dropoffAddress,
+        lat: job.dropoffLat,
+        lng: job.dropoffLng,
+        placeName: job.dropoffLabel,
+        plusCode: job.dropoffPlusCode,
+      };
 
   const contact = headingToPickup
     ? { name: job.senderName, phone: job.senderPhone, whatsapp: job.senderWhatsapp, role: 'Sender' }
@@ -475,15 +534,42 @@ function ActiveJob({
           <p className="mt-1 text-[16px] font-semibold leading-snug" style={{ color: 'var(--text-primary)' }}>
             {target.address}
           </p>
-          <a
-            className="btn btn-outline btn-sm mt-3"
-            href={`https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Navigation size={14} />
-            Open in Maps
-          </a>
+
+          {/* The customer's own words for the place, plus the coordinate code.
+              In a city where most places have no street address, this pair is
+              what makes the job findable. */}
+          {target.placeName && (
+            <p
+              className="mt-1.5 inline-block rounded-md px-2 py-0.5 text-[12.5px] font-medium"
+              style={{ background: 'var(--bg-tertiary, rgba(0,0,0,0.05))', color: 'var(--text-secondary)' }}
+            >
+              {target.placeName}
+            </p>
+          )}
+          {target.plusCode && (
+            <p className="mt-1 font-mono text-[12px]" style={{ color: 'var(--text-muted)' }}>
+              Code {target.plusCode}
+            </p>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a
+              className="btn btn-outline btn-sm"
+              href={`https://www.google.com/maps/dir/?api=1&destination=${target.lat},${target.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Navigation size={14} />
+              Open in Maps
+            </a>
+
+            {/* The flywheel: confirm the exact point so the next customer in this
+                area finds it already mapped. */}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onCapturePlace}>
+              <MapPin size={13} />
+              Capture this place
+            </button>
+          </div>
         </div>
 
         {/* Live road route between the two pins, drawn by the Directions API.

@@ -19,7 +19,7 @@ export default function TrackOrder() {
   const { ticketId } = useParams();
   const router = useRouter();
   const [order, setOrder] = useState<any>(null);
-  const [routePolyline, setRoutePolyline] = useState<string | null>(null);
+  const [routeGeometry, setRouteGeometry] = useState<{ type: 'LineString'; coordinates: number[][] } | null>(null);
   const [rider, setRider] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,7 +72,7 @@ export default function TrackOrder() {
       const { data } = await api.get(`/tracking/${ticketId}`);
       setOrder(data.order);
       setRider(data.rider);
-      setRoutePolyline(data.route?.polyline || null);
+      setRouteGeometry(data.route?.geometry || null);
       setError('');
 
       // Subscribe to order room via socket for real-time updates
@@ -340,7 +340,7 @@ export default function TrackOrder() {
                 <Map
                   center={[parseFloat(order.pickupLat) || 4.8156, parseFloat(order.pickupLng) || 7.0498]}
                   markers={markers}
-                  routePolyline={routePolyline || undefined}
+                  routeGeometry={routeGeometry ?? undefined}
                   showRouteInfo={true}
                   className="w-full h-full min-h-[380px]"
                 />

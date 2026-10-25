@@ -11,7 +11,8 @@ import { createOrderLimiter } from '../middleware/rateLimit.js';
 import { ORDER_STATUS, canTransition } from '../lib/orderStatus.js';
 import { AUDIT, recordAudit } from '../lib/audit.js';
 import { trackingOrder } from '../lib/serialize.js';
-import { getDistanceMatrix, getDirections } from '../lib/google-maps.js';
+import { getDistanceMatrix, getDirections } from '../lib/routing.js';
+import { encodePlusCode, isValidPlusCode } from '../lib/plusCode.js';
 import {
   validateBody,
   validateUuidParam,
@@ -51,6 +52,21 @@ async function resolveDistance(origin, destination, fallbackKm) {
     console.warn('[maps] distance matrix unavailable, using great-circle:', error.message);
   }
   return { distanceKm: fallbackKm, durationMinutes: null };
+}
+
+/**
+ * Resolve a Plus Code for an order endpoint.
+ *
+ * The client normally sends one (its own pin capture generates it locally, with
+ * no network call). When it does not, we derive it from the coordinates so every
+ * order carries a code either way. A supplied code that fails validation is
+ * discarded rather than stored, because a wrong code is worse than no code.
+ */
+function resolvePlusCode(supplied, lat, lng) {
+  if (supplied && isValidPlusCode(String(supplied))) {
+    return String(supplied).toUpperCase();
+  }
+  return encodePlusCode(Number(lat), Number(lng));
 }
 
 /**
@@ -129,6 +145,11 @@ router.post('/', createOrderLimiter, optionalAuth, validateBody(createOrderSchem
     const pricing = await loadPricing();
     const totalPrice = quotePrice({ distanceKm, ...pricing });
 
+    // Every order carries a Plus Code for each endpoint. The label is what the
+    // rider reads; the code is the authoritative coordinate reference.
+    const pickupPlusCode = resolvePlusCode(body.pickupPlusCode, body.pickupLat, body.pickupLng);
+    const dropoffPlusCode = resolvePlusCode(body.dropoffPlusCode, body.dropoffLat, body.dropoffLng);
+
     const ticketId = generateTicketId();
     const recipientToken = generateRecipientToken();
     const recipientLinkExpiresAt = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
@@ -142,9 +163,13 @@ router.post('/', createOrderLimiter, optionalAuth, validateBody(createOrderSchem
         pickupAddress: body.pickupAddress,
         pickupLat: String(body.pickupLat),
         pickupLng: String(body.pickupLng),
+        pickupLabel: body.pickupLabel || null,
+        pickupPlusCode,
         dropoffAddress: body.dropoffAddress,
         dropoffLat: String(body.dropoffLat),
         dropoffLng: String(body.dropoffLng),
+        dropoffLabel: body.dropoffLabel || null,
+        dropoffPlusCode,
         senderName: body.senderName,
         senderPhone: body.senderPhone,
         senderWhatsapp: body.senderWhatsapp || null,
@@ -315,9 +340,11 @@ router.get('/:orderId', validateUuidParam('orderId'), optionalAuth, async (req, 
         );
         if (directions) {
           route = {
-            polyline: directions.polyline,
+            geometry: directions.geometry,
             distanceText: directions.distanceText,
             durationText: directions.durationText,
+            source: directions.source,
+            note: directions.note,
           };
         }
       } catch (error) {

@@ -71,4 +71,5 @@ export const AUDIT = {
   PRICING_UPDATED: 'settings.pricing_updated',
   SETTINGS_UPDATED: 'settings.updated',
   REPORT_RESOLVED: 'report.resolved',
+  LOCATION_CAPTURED: 'location.captured',
 };

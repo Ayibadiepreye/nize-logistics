@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
-import GoogleAddressInput from '@/components/GoogleAddressInput';
+import AddressPicker, { type PickedPoint } from '@/components/AddressPicker';
 import MapPreview from '@/components/MapPreview';
 import api from '@/lib/api';
 import Icon from '@/components/Icon';
@@ -25,11 +25,15 @@ export default function CreateOrder() {
     pickupType: 'immediate',
     scheduledPickupAt: '',
     pickupAddress: '',
-    pickupLat: '4.8156',
-    pickupLng: '7.0498',
+    pickupLat: '',
+    pickupLng: '',
+    pickupLabel: '',
+    pickupPlusCode: '',
     dropoffAddress: '',
-    dropoffLat: '4.8200',
-    dropoffLng: '7.0600',
+    dropoffLat: '',
+    dropoffLng: '',
+    dropoffLabel: '',
+    dropoffPlusCode: '',
     senderName: '',
     senderPhone: '',
     senderWhatsapp: '',
@@ -49,11 +53,37 @@ export default function CreateOrder() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  /** Apply a captured pin to one endpoint of the form. */
+  const applyPoint = (field: 'pickup' | 'dropoff', point: PickedPoint) => {
+    updateField(`${field}Lat`, point.lat.toString());
+    updateField(`${field}Lng`, point.lng.toString());
+    updateField(`${field}PlusCode`, point.plusCode);
+  };
+
+  /** The pin currently captured for an endpoint, if any. */
+  const pointFor = (field: 'pickup' | 'dropoff'): PickedPoint | null => {
+    const lat = parseFloat(formData[`${field}Lat`]);
+    const lng = parseFloat(formData[`${field}Lng`]);
+    const plusCode = formData[`${field}PlusCode`];
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !plusCode) return null;
+    return { lat, lng, plusCode };
+  };
+
   const handleNext = () => {
     setError('');
     if (step === 1) {
+      // A fare cannot be computed without coordinates, and a delivery cannot be
+      // found without them either — so both endpoints must have a real pin.
+      if (!pointFor('pickup')) {
+        setError('Capture the pickup location — tap the map or use "Get My Location Code".');
+        return;
+      }
+      if (!pointFor('dropoff')) {
+        setError('Capture the drop-off location — tap the map or use "Get My Location Code".');
+        return;
+      }
       if (!formData.pickupAddress || !formData.dropoffAddress) {
-        setError('Please enter both pickup and dropoff addresses');
+        setError('Please describe both the pickup and drop-off places.');
         return;
       }
     } else if (step === 2) {
@@ -91,7 +121,7 @@ export default function CreateOrder() {
     }
   };
 
-  // Calculate price using backend API (Google Maps Distance Matrix)
+  // Price on real road distance from the backend's routing engine.
   const calculateEstimate = useCallback(async () => {
     const pickupLat = parseFloat(formData.pickupLat);
     const pickupLng = parseFloat(formData.pickupLng);
@@ -242,28 +272,27 @@ export default function CreateOrder() {
                     </div>
                   )}
 
-                  <GoogleAddressInput
-                    value={formData.pickupAddress}
-                    onChange={(address, lat, lng) => {
-                      updateField('pickupAddress', address);
-                      updateField('pickupLat', lat.toString());
-                      updateField('pickupLng', lng.toString());
-                    }}
-                    placeholder="Enter pickup address"
-                    label="Pickup Address *"
-                    showCurrentLocation={true}
+                  <AddressPicker
+                    title="Pickup location *"
+                    address={formData.pickupAddress}
+                    onAddressChange={(v) => updateField('pickupAddress', v)}
+                    placeName={formData.pickupLabel}
+                    onPlaceNameChange={(v) => updateField('pickupLabel', v)}
+                    point={pointFor('pickup')}
+                    onPointChange={(p) => applyPoint('pickup', p)}
+                    icon="pickup"
                   />
 
                   <div style={{ marginTop: '16px' }}>
-                    <GoogleAddressInput
-                      value={formData.dropoffAddress}
-                      onChange={(address, lat, lng) => {
-                        updateField('dropoffAddress', address);
-                        updateField('dropoffLat', lat.toString());
-                        updateField('dropoffLng', lng.toString());
-                      }}
-                      placeholder="Enter dropoff address"
-                      label="Dropoff Address *"
+                    <AddressPicker
+                      title="Drop-off location *"
+                      address={formData.dropoffAddress}
+                      onAddressChange={(v) => updateField('dropoffAddress', v)}
+                      placeName={formData.dropoffLabel}
+                      onPlaceNameChange={(v) => updateField('dropoffLabel', v)}
+                      point={pointFor('dropoff')}
+                      onPointChange={(p) => applyPoint('dropoff', p)}
+                      icon="dropoff"
                     />
                   </div>
 

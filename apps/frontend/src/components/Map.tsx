@@ -1,309 +1,329 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { loadGoogleMaps } from '@/lib/googleMaps';
+/**
+ * Map view — Leaflet + OpenStreetMap tiles.
+ *
+ * Replaces the Google Maps JavaScript SDK, whose data services are paywalled.
+ * Leaflet and OSM tiles are free at any volume.
+ *
+ * Implementation note: this uses Leaflet directly rather than react-leaflet.
+ * react-leaflet 4.x declares React 18 as a peer dependency while this app is on
+ * React 19, so wrapping Leaflet by hand avoids a peer-dependency conflict that
+ * would otherwise need a legacy-peer-deps flag on every install.
+ *
+ * Leaflet touches `window`, so it is imported inside an effect and the component
+ * renders a placeholder until it has loaded.
+ */
 
-interface MapProps {
-  center?: [number, number];
-  zoom?: number;
-  markers?: Array<{
-    position: [number, number];
-    popup?: string;
-    icon?: 'pickup' | 'dropoff' | 'rider';
-  }>;
-  route?: Array<[number, number]>;
-  routePolyline?: string; // Encoded polyline from Google Directions API
-  className?: string;
-  showRouteInfo?: boolean;
+import { useEffect, useRef, useState } from 'react';
+import 'leaflet/dist/leaflet.css';
+
+export interface MapMarker {
+  position: [number, number];
+  popup?: string;
+  icon?: 'pickup' | 'dropoff' | 'rider';
 }
 
-export default function GoogleMap({
-  center = [4.8156, 7.0498],
-  zoom = 13,
-  markers = [],
-  route,
-  routePolyline,
-  className = '',
-  showRouteInfo = false,
-}: MapProps) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const googleMarkersRef = useRef<google.maps.Marker[]>([]);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+export interface MapProps {
+  center?: [number, number];
+  zoom?: number;
+  markers?: MapMarker[];
+  /** A route as an explicit list of [lat, lng] points. */
+  route?: Array<[number, number]>;
+  /** A GeoJSON LineString from the routing engine. Preferred over `route`. */
+  routeGeometry?: { type: 'LineString'; coordinates: number[][] } | null;
+  /** @deprecated Google's encoded polyline. Kept so old call sites still work. */
+  routePolyline?: string;
+  className?: string;
+  showRouteInfo?: boolean;
+  /** Called when the user clicks the map — used to drop a pin. */
+  onMapClick?: (lat: number, lng: number) => void;
+  /** Height in pixels. Defaults to 300. */
+  height?: number;
+  /** When true the map pans to `center` whenever it changes. */
+  followCenter?: boolean;
+}
+
+type LeafletModule = typeof import('leaflet');
+
+/** Port Harcourt — the area this platform operates in. */
+const DEFAULT_CENTER: [number, number] = [4.8156, 7.0498];
+
+const ICON_COLORS = {
+  pickup: '#0066ff',
+  dropoff: '#ff3366',
+  rider: '#10b981',
+} as const;
+
+type IconKind = keyof typeof ICON_COLORS;
+
+/**
+ * A pin drawn as an inline SVG data URI.
+ *
+ * Leaflet's own marker images resolve relative to its CSS file, which bundlers
+ * mangle; an explicit data URI avoids a whole class of broken-image bugs and
+ * needs no network request.
+ */
+function makePinIcon(L: LeafletModule, kind: IconKind) {
+  const color = ICON_COLORS[kind] ?? ICON_COLORS.pickup;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="42" viewBox="0 0 30 42">
+    <path d="M15 1C7.82 1 2 6.82 2 14c0 9.75 13 27 13 27s13-17.25 13-27C28 6.82 22.18 1 15 1z"
+      fill="${color}" stroke="#ffffff" stroke-width="2"/>
+    <circle cx="15" cy="14" r="5.5" fill="#ffffff"/>
+  </svg>`;
+
+  return L.divIcon({
+    html: svg,
+    className: 'nize-pin',
+    iconSize: [30, 42],
+    iconAnchor: [15, 42],
+    popupAnchor: [0, -38],
+  });
+}
+
+/** Decode Google's encoded polyline format, for backwards compatibility. */
+function decodePolyline(str: string): Array<[number, number]> {
+  const points: Array<[number, number]> = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < str.length) {
+    let result = 1;
+    let shift = 0;
+    let b: number;
+    do {
+      b = str.charCodeAt(index++) - 63 - 1;
+      result += b << shift;
+      shift += 5;
+    } while (b >= 0x1f);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    result = 1;
+    shift = 0;
+    do {
+      b = str.charCodeAt(index++) - 63 - 1;
+      result += b << shift;
+      shift += 5;
+    } while (b >= 0x1f);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+
+    points.push([lat * 1e-5, lng * 1e-5]);
+  }
+  return points;
+}
+
+/** Normalise the route inputs into a single list of points. */
+function resolveRoutePoints(props: MapProps): Array<[number, number]> {
+  if (props.routeGeometry?.coordinates?.length) {
+    // GeoJSON is [lng, lat]; Leaflet wants [lat, lng].
+    return props.routeGeometry.coordinates.map(
+      ([lng, lat]) => [lat, lng] as [number, number]
+    );
+  }
+  if (props.route?.length) return props.route;
+  if (props.routePolyline) {
+    try {
+      return decodePolyline(props.routePolyline);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export default function Map(props: MapProps) {
+  const {
+    center = DEFAULT_CENTER,
+    zoom = 13,
+    markers = [],
+    className = '',
+    showRouteInfo = false,
+    onMapClick,
+    height = 300,
+    followCenter = false,
+  } = props;
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const leafletRef = useRef<LeafletModule | null>(null);
+  const mapInstanceRef = useRef<import('leaflet').Map | null>(null);
+  const routeLayerRef = useRef<import('leaflet').LayerGroup | null>(null);
+  const markerLayerRef = useRef<import('leaflet').LayerGroup | null>(null);
+  const clickHandlerRef = useRef<((lat: number, lng: number) => void) | null>(null);
+
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadError, setLoadError] = useState('');
-  const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
 
+  const routePoints = resolveRoutePoints(props);
+
+  // Keep the latest click handler reachable from the Leaflet callback without
+  // re-binding the listener on every render.
   useEffect(() => {
-    loadGoogleMaps()
-      .then(() => {
-        if (mapRef.current && !mapInstanceRef.current && window.google?.maps) {
-          const mapCenter = { lat: center[0], lng: center[1] };
+    clickHandlerRef.current = onMapClick ?? null;
+  }, [onMapClick]);
 
-          mapInstanceRef.current = new google.maps.Map(mapRef.current, {
-            center: mapCenter,
-            zoom: zoom,
-            mapTypeControl: false,
-            streetViewControl: false,
-            fullscreenControl: true,
-            zoomControl: true,
-            styles: [
-              {
-                featureType: 'poi',
-                elementType: 'labels',
-                stylers: [{ visibility: 'off' }],
-              },
-            ],
-          });
+  // Initialise the map once.
+  useEffect(() => {
+    let cancelled = false;
 
-          setIsLoaded(true);
-        }
-      })
-      .catch((err) => {
-        console.warn('Google Maps loader note:', err);
-        setLoadError(err.message || 'Google Maps key not found');
-      });
+    (async () => {
+      try {
+        const L = await import('leaflet');
+        if (cancelled || !containerRef.current || mapInstanceRef.current) return;
+
+        leafletRef.current = L;
+
+        const map = L.map(containerRef.current, {
+          center,
+          zoom,
+          zoomControl: true,
+          attributionControl: true,
+        });
+
+        // OpenStreetMap's standard tile layer. Free to use; see their tile usage
+        // policy for the fair-use limits that apply at high volume.
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        }).addTo(map);
+
+        routeLayerRef.current = L.layerGroup().addTo(map);
+        markerLayerRef.current = L.layerGroup().addTo(map);
+
+        map.on('click', (e: import('leaflet').LeafletMouseEvent) => {
+          clickHandlerRef.current?.(e.latlng.lat, e.latlng.lng);
+        });
+
+        mapInstanceRef.current = map;
+        setStatus('ready');
+      } catch (err) {
+        if (cancelled) return;
+        setLoadError(err instanceof Error ? err.message : 'unknown error');
+        setStatus('error');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      mapInstanceRef.current?.remove();
+      mapInstanceRef.current = null;
+      routeLayerRef.current = null;
+      markerLayerRef.current = null;
+      leafletRef.current = null;
+    };
+    // Deliberately initialised once; later prop changes are handled below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update markers, route polyline, and directions whenever data changes
+  // Redraw markers and the route when they change.
   useEffect(() => {
-    if (!isLoaded || !mapInstanceRef.current || !window.google?.maps) return;
-
+    const L = leafletRef.current;
     const map = mapInstanceRef.current;
+    if (!L || !map || status !== 'ready') return;
 
-    // Clear old markers
-    googleMarkersRef.current.forEach((m) => m.setMap(null));
-    googleMarkersRef.current = [];
+    const markerLayer = markerLayerRef.current;
+    const routeLayer = routeLayerRef.current;
+    if (!markerLayer || !routeLayer) return;
 
-    // Clear old polyline
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-      polylineRef.current = null;
+    markerLayer.clearLayers();
+    routeLayer.clearLayers();
+
+    // A plain object rather than `Map`: Leaflet's type declarations introduce a
+    // `Map` class into this scope, which shadows the global constructor.
+    const iconCache: Partial<Record<IconKind, ReturnType<typeof makePinIcon>>> = {};
+    for (const m of markers) {
+      const [lat, lng] = m.position;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+      const kind: IconKind = (m.icon as IconKind) ?? 'pickup';
+      if (!iconCache[kind]) iconCache[kind] = makePinIcon(L, kind);
+
+      const marker = L.marker(m.position, { icon: iconCache[kind]! });
+      if (m.popup) marker.bindPopup(m.popup);
+      marker.addTo(markerLayer);
     }
 
-    // Clear old directions renderer
-    if (directionsRendererRef.current) {
-      directionsRendererRef.current.setMap(null);
-      directionsRendererRef.current = null;
+    if (routePoints.length > 1) {
+      L.polyline(routePoints, {
+        color: '#0066ff',
+        weight: 5,
+        opacity: 0.85,
+        lineJoin: 'round',
+      }).addTo(routeLayer);
     }
 
-    const bounds = new google.maps.LatLngBounds();
-    let hasPoints = false;
-
-    // Add each marker
-    markers.forEach((markerData) => {
-      const [lat, lng] = markerData.position;
-      if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
-
-      const position = { lat, lng };
-      const iconType = markerData.icon || 'pickup';
-
-      let markerIcon: google.maps.Symbol | undefined;
-
-      if (iconType === 'pickup') {
-        markerIcon = {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#0066ff',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 3,
-        };
-      } else if (iconType === 'dropoff') {
-        markerIcon = {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#ff3366',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 3,
-        };
-      } else if (iconType === 'rider') {
-        markerIcon = {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 7,
-          fillColor: '#10b981',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 2,
-          rotation: 0,
-        };
-      }
-
-      const marker = new google.maps.Marker({
-        position,
-        map,
-        icon: markerIcon,
-        title: markerData.popup ? markerData.popup.replace(/<[^>]*>/g, '') : undefined,
-        animation: iconType === 'rider' ? google.maps.Animation.BOUNCE : undefined,
-        zIndex: iconType === 'rider' ? 1000 : undefined,
-      });
-
-      // Stop bounce animation after 2 bounces for rider
-      if (iconType === 'rider') {
-        setTimeout(() => marker.setAnimation(null), 1500);
-      }
-
-      if (markerData.popup) {
-        const infoWindow = new google.maps.InfoWindow({
-          content: `<div style="font-family: sans-serif; font-size: 12px; color: #1e293b; padding: 4px;">${markerData.popup}</div>`,
-        });
-
-        marker.addListener('click', () => {
-          infoWindow.open(map, marker);
-        });
-      }
-
-      googleMarkersRef.current.push(marker);
-      bounds.extend(position);
-      hasPoints = true;
-    });
-
-    // Render route using encoded polyline from API (most accurate — follows roads)
-    if (routePolyline) {
-      try {
-        const decodedPath = google.maps.geometry?.encoding?.decodePath(routePolyline);
-        if (decodedPath && decodedPath.length > 0) {
-          polylineRef.current = new google.maps.Polyline({
-            path: decodedPath,
-            geodesic: true,
-            strokeColor: '#0066ff',
-            strokeOpacity: 0.85,
-            strokeWeight: 5,
-            map,
-          });
-
-          // Extend bounds with polyline path
-          decodedPath.forEach((point) => bounds.extend(point));
-        }
-      } catch (err) {
-        console.warn('Failed to decode polyline, falling back to Directions Service');
-      }
+    // Frame the content when there is more than one point to show.
+    const allPoints: Array<[number, number]> = [
+      ...markers.map((m) => m.position),
+      ...routePoints,
+    ];
+    if (allPoints.length > 1) {
+      map.fitBounds(allPoints, { padding: [30, 30], maxZoom: 15 });
     }
+  }, [markers, routePoints, status]);
 
-    // If no encoded polyline, try Directions Service for road-following route
-    if (!routePolyline && markers.length >= 2) {
-      const pickupMarker = markers.find(m => m.icon === 'pickup');
-      const dropoffMarker = markers.find(m => m.icon === 'dropoff');
-
-      if (pickupMarker && dropoffMarker) {
-        const directionsService = new google.maps.DirectionsService();
-        const directionsRenderer = new google.maps.DirectionsRenderer({
-          map,
-          suppressMarkers: true, // We draw our own markers
-          polylineOptions: {
-            strokeColor: '#0066ff',
-            strokeOpacity: 0.85,
-            strokeWeight: 5,
-          },
-        });
-
-        directionsService.route(
-          {
-            origin: { lat: pickupMarker.position[0], lng: pickupMarker.position[1] },
-            destination: { lat: dropoffMarker.position[0], lng: dropoffMarker.position[1] },
-            travelMode: google.maps.TravelMode.DRIVING,
-          },
-          (result, status) => {
-            if (status === google.maps.DirectionsStatus.OK && result) {
-              directionsRenderer.setDirections(result);
-              directionsRendererRef.current = directionsRenderer;
-
-              // Extract route info
-              const leg = result.routes?.[0]?.legs?.[0];
-              if (leg) {
-                setRouteInfo({
-                  distance: leg.distance?.text || '',
-                  duration: leg.duration?.text || '',
-                });
-              }
-            } else {
-              // Fallback: draw straight line
-              const validMarkers = markers.filter(
-                (m) => !isNaN(m.position[0]) && !isNaN(m.position[1])
-              );
-              if (validMarkers.length >= 2) {
-                const path = validMarkers.map(
-                  (m) => new google.maps.LatLng(m.position[0], m.position[1])
-                );
-                polylineRef.current = new google.maps.Polyline({
-                  path,
-                  geodesic: true,
-                  strokeColor: '#0066ff',
-                  strokeOpacity: 0.8,
-                  strokeWeight: 4,
-                  map,
-                });
-              }
-            }
-          }
-        );
-      }
-    }
-
-    // Draw custom route array if provided
-    if (route && route.length > 1 && !routePolyline) {
-      const path = route.map(([lat, lng]) => new google.maps.LatLng(lat, lng));
-      polylineRef.current = new google.maps.Polyline({
-        path,
-        geodesic: true,
-        strokeColor: '#0066ff',
-        strokeOpacity: 0.85,
-        strokeWeight: 4,
-        map,
-      });
-    }
-
-    if (hasPoints) {
-      map.fitBounds(bounds);
-      google.maps.event.addListenerOnce(map, 'bounds_changed', () => {
-        const currentZoom = map.getZoom();
-        if (currentZoom && currentZoom > 15) {
-          map.setZoom(15);
-        }
-      });
-    }
-  }, [isLoaded, markers, route, routePolyline]);
+  // Optionally follow a moving centre (a rider's position, for example).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || status !== 'ready' || !followCenter) return;
+    map.setView(center, undefined, { animate: true });
+  }, [center, followCenter, status]);
 
   return (
-    <div className={`relative w-full h-full min-h-[300px] ${className}`}>
-      <div ref={mapRef} className="w-full h-full rounded-2xl" style={{ minHeight: '300px' }} />
+    <div className={`relative w-full ${className}`} style={{ height }}>
+      <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
 
-      {/* Route info overlay */}
-      {showRouteInfo && routeInfo && (
+      {showRouteInfo && status === 'ready' && (
         <div
           className="absolute top-3 left-3 px-3 py-2 rounded-xl text-xs font-bold shadow-lg"
           style={{
             background: 'rgba(0, 0, 0, 0.75)',
             backdropFilter: 'blur(8px)',
             color: '#ffffff',
+            zIndex: 1000,
           }}
         >
-          <span className="text-blue-400">{routeInfo.distance}</span>
+          <span style={{ color: '#60a5fa' }}>OpenStreetMap</span>
           <span className="mx-1 opacity-50">•</span>
-          <span className="text-green-400">{routeInfo.duration}</span>
+          <span style={{ color: '#4ade80' }}>Live routing</span>
         </div>
       )}
 
-      {!isLoaded && !loadError && (
-        <div className="absolute inset-0 flex items-center justify-center rounded-2xl" style={{ background: 'var(--bg-secondary)' }}>
+      {status === 'loading' && !loadError && (
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ background: 'var(--bg-secondary)' }}
+        >
           <div className="text-center space-y-2">
-            <div className="spinner mx-auto" style={{ width: '32px', height: '32px' }}></div>
-            <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>Loading Google Maps...</p>
+            <div className="spinner mx-auto" style={{ width: '32px', height: '32px' }} />
+            <p className="text-xs font-semibold" style={{ color: 'var(--text-secondary)' }}>
+              Loading map…
+            </p>
           </div>
         </div>
       )}
+
       {loadError && (
-        <div className="absolute inset-0 flex items-center justify-center p-4 rounded-2xl text-center" style={{ background: 'var(--bg-secondary)' }}>
+        <div
+          className="absolute inset-0 flex items-center justify-center p-4 text-center"
+          style={{ background: 'var(--bg-secondary)' }}
+        >
           <div className="space-y-2 max-w-xs">
             <div className="w-8 h-8 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center mx-auto">
               📍
             </div>
-            <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>Google Maps Live Feed</p>
-            <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-              Port Harcourt Coordinates: {center[0].toFixed(4)}, {center[1].toFixed(4)}
+            <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>
+              Map unavailable
             </p>
+            <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              Coordinates: {center[0].toFixed(4)}, {center[1].toFixed(4)}
+            </p>
+            {loadError && (
+              <p className="text-[11px] opacity-70" style={{ color: 'var(--text-secondary)' }}>
+                {loadError}
+              </p>
+            )}
           </div>
         </div>
       )}

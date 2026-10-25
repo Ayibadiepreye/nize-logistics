@@ -25,8 +25,12 @@ function clientFromUrl(databaseUrl) {
     password: decodeURIComponent(url.password),
     host: url.hostname,
     port: parseInt(url.port, 10) || 5432,
-    database: url.pathname.slice(1),
-    ssl: databaseUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : false,
+    database: url.pathname.slice(1).split('?')[0],
+    // SSL must always be on. Neon terminates TLS at its proxy and refuses
+    // plaintext connections; a Neon URL does not carry `sslmode=require`, so
+    // keying this off that parameter meant the connection was refused and the
+    // migration silently never ran.
+    ssl: { rejectUnauthorized: false },
   });
 }
 

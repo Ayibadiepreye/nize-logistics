@@ -61,6 +61,12 @@ export function trackingOrder(order) {
     pickupLng: order.pickupLng,
     dropoffLat: order.dropoffLat,
     dropoffLng: order.dropoffLng,
+    // The Plus Code is the authoritative coordinate reference for a place that
+    // has no real street address. Safe to expose: it encodes only a location.
+    pickupLabel: order.pickupLabel ?? null,
+    pickupPlusCode: order.pickupPlusCode ?? null,
+    dropoffLabel: order.dropoffLabel ?? null,
+    dropoffPlusCode: order.dropoffPlusCode ?? null,
     senderName: order.senderName,
     recipientName: order.recipientName,
     distanceKm: order.distanceKm,
@@ -93,6 +99,13 @@ export function riderOrder(order) {
     dropoffAddress: order.dropoffAddress,
     dropoffLat: order.dropoffLat,
     dropoffLng: order.dropoffLng,
+    // The rider reads the label and navigates using the code. In a city where
+    // most places have no street address, the label is what makes the job
+    // findable and the code is what makes it verifiable.
+    pickupLabel: order.pickupLabel ?? null,
+    pickupPlusCode: order.pickupPlusCode ?? null,
+    dropoffLabel: order.dropoffLabel ?? null,
+    dropoffPlusCode: order.dropoffPlusCode ?? null,
     senderName: order.senderName,
     senderPhone: order.senderPhone,
     senderWhatsapp: order.senderWhatsapp,

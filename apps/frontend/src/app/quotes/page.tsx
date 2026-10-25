@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
-import GoogleAddressInput from '@/components/GoogleAddressInput';
+import AddressPicker, { type PickedPoint } from '@/components/AddressPicker';
 import MapPreview from '@/components/MapPreview';
 import { useRouter } from 'next/navigation';
 import Icon from '@/components/Icon';
@@ -21,9 +21,11 @@ export default function QuotesPage() {
   const [pickupAddress, setPickupAddress] = useState('');
   const [pickupLat, setPickupLat] = useState<number | null>(null);
   const [pickupLng, setPickupLng] = useState<number | null>(null);
+  const [pickupPoint, setPickupPoint] = useState<PickedPoint | null>(null);
   const [dropoffAddress, setDropoffAddress] = useState('');
   const [dropoffLat, setDropoffLat] = useState<number | null>(null);
   const [dropoffLng, setDropoffLng] = useState<number | null>(null);
+  const [dropoffPoint, setDropoffPoint] = useState<PickedPoint | null>(null);
   const [addressQuote, setAddressQuote] = useState<{
     distanceKm: number;
     totalPrice: number;
@@ -35,7 +37,7 @@ export default function QuotesPage() {
 
   const calculateAddressQuote = async () => {
     if (!pickupLat || !pickupLng || !dropoffLat || !dropoffLng) {
-      setAddressError('Choose both a pickup and a drop-off address from the suggestions.');
+      setAddressError('Capture both a pickup and a drop-off point — tap the map or use the location button.');
       return;
     }
 
@@ -149,27 +151,34 @@ export default function QuotesPage() {
                 </h3>
 
                 <div style={{ display: 'grid', gap: '16px' }}>
-                  <GoogleAddressInput
-                    value={pickupAddress}
-                    onChange={(address, lat, lng) => {
-                      setPickupAddress(address);
-                      setPickupLat(lat);
-                      setPickupLng(lng);
+                  <AddressPicker
+                    title="Pickup location"
+                    address={pickupAddress}
+                    onAddressChange={setPickupAddress}
+                    placeName=""
+                    onPlaceNameChange={() => {}}
+                    point={pickupPoint}
+                    onPointChange={(p) => {
+                      setPickupPoint(p);
+                      setPickupLat(p.lat);
+                      setPickupLng(p.lng);
                     }}
-                    placeholder="Enter pickup address"
-                    label="Pickup Address"
-                    showCurrentLocation={true}
+                    icon="pickup"
                   />
 
-                  <GoogleAddressInput
-                    value={dropoffAddress}
-                    onChange={(address, lat, lng) => {
-                      setDropoffAddress(address);
-                      setDropoffLat(lat);
-                      setDropoffLng(lng);
+                  <AddressPicker
+                    title="Drop-off location"
+                    address={dropoffAddress}
+                    onAddressChange={setDropoffAddress}
+                    placeName=""
+                    onPlaceNameChange={() => {}}
+                    point={dropoffPoint}
+                    onPointChange={(p) => {
+                      setDropoffPoint(p);
+                      setDropoffLat(p.lat);
+                      setDropoffLng(p.lng);
                     }}
-                    placeholder="Enter drop-off address"
-                    label="Drop-off Address"
+                    icon="dropoff"
                   />
                 </div>
 

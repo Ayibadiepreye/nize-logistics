@@ -1,6 +1,6 @@
 import express from 'express';
 import { db } from '../lib/db/index.js';
-import { orders, users } from '../lib/db/schema.js';
+import { orders, users, locations } from '../lib/db/schema.js';
 import { eq, and, desc, inArray, sql, gte } from 'drizzle-orm';
 import { authenticate, requireRider, blockIfPasswordResetPending } from '../middleware/auth.js';
 import { sendEmail } from '../lib/email.js';
@@ -12,8 +12,9 @@ import {
   assertTransition,
   STATUS_LABELS,
 } from '../lib/orderStatus.js';
-import { validateBody, validateUuidParam, riderStatusUpdateSchema } from '../lib/validate.js';
-import { getDistanceMatrix } from '../lib/google-maps.js';
+import { validateBody, validateUuidParam, riderStatusUpdateSchema, captureLocationSchema } from '../lib/validate.js';
+import { getDistanceMatrix } from '../lib/routing.js';
+import { encodePlusCode, isValidPlusCode } from '../lib/plusCode.js';
 
 const router = express.Router();
 
@@ -408,5 +409,105 @@ router.get('/history', async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * POST /api/rider/locations/capture
+ *
+ * The flywheel. When a rider reaches a drop-off that the map does not know —
+ * which in Nigeria is most of them — they confirm the exact point and give it a
+ * name. That point is stored in the place cache tagged `source: 'rider'`.
+ *
+ * The next time anyone in that area books a delivery, the place is already
+ * there. Every completed delivery makes the map better, and that map is the one
+ * thing a competitor cannot copy.
+ *
+ * Body: { orderId, label, lat, lng, plusCode? }
+ */
+router.post('/locations/capture', validateBody(captureLocationSchema), async (req, res, next) => {
+  try {
+    const { orderId, label, lat, lng, plusCode: suppliedCode } = req.body;
+
+    // The capture must belong to a job this rider actually owns, so one rider
+    // cannot litter another's operating area with junk places.
+    const [order] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.id, orderId), eq(orders.assignedRiderId, req.user.id)))
+      .limit(1);
+
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found or not assigned to you' });
+    }
+
+    const plusCode = suppliedCode && isValidPlusCode(String(suppliedCode))
+      ? String(suppliedCode).toUpperCase()
+      : encodePlusCode(lat, lng);
+
+    if (!plusCode) {
+      return res.status(400).json({ error: 'Valid coordinates are required' });
+    }
+
+    const [existing] = await db
+      .select()
+      .from(locations)
+      .where(eq(locations.plusCode, plusCode))
+      .limit(1);
+
+    if (existing) {
+      // Already known: just mark that it was used again.
+      const [bumped] = await db
+        .update(locations)
+        .set({ useCount: sql`${locations.useCount} + 1`, lastUsedAt: new Date() })
+        .where(eq(locations.id, existing.id))
+        .returning();
+
+      return res.json({
+        location: serializeLocation(bumped),
+        existing: true,
+      });
+    }
+
+    const [created] = await db
+      .insert(locations)
+      .values({
+        label,
+        plusCode,
+        lat: String(lat),
+        lng: String(lng),
+        source: 'rider',
+        createdById: req.user.id,
+        lastUsedAt: new Date(),
+      })
+      .returning();
+
+    await recordAudit({
+      actorId: req.user.id,
+      actorLabel: req.user.fullName || req.user.username,
+      action: AUDIT.LOCATION_CAPTURED,
+      entityType: 'location',
+      entityId: created.id,
+      summary: `Rider captured place "${label}" (${plusCode})`,
+      req,
+    });
+
+    res.status(201).json({ location: serializeLocation(created), existing: false });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/** Narrow, secret-free shape for a cached place. */
+function serializeLocation(row) {
+  return {
+    id: row.id,
+    label: row.label,
+    plusCode: row.plusCode,
+    lat: parseFloat(row.lat),
+    lng: parseFloat(row.lng),
+    source: row.source,
+    useCount: row.useCount,
+    lastUsedAt: row.lastUsedAt,
+  };
+}
 
 export default router;

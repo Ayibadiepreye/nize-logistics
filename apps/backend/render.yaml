@@ -4,7 +4,11 @@ services:
     env: node
     region: frankfurt
     plan: free
-    buildCommand: npm install
+    # The migration runs on every deploy. It is idempotent — every statement is
+    # IF NOT EXISTS / IF EXISTS guarded and nothing is dropped — so running it
+    # repeatedly is safe. It must run before the app starts, because the code
+    # selects columns the base schema does not have.
+    buildCommand: npm install && npm run migrate
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -20,5 +24,29 @@ services:
       - key: PAYSTACK_PUBLIC_KEY
         sync: false
       - key: FRONTEND_URL
+        sync: false
+      # Optional: point at a self-hosted OSRM instance when the public demo
+      # server is not good enough. Unset means the public demo is used.
+      - key: OSRM_URL
+        sync: false
+      # Email delivery. Either Resend or SMTP; without one, no order
+      # notifications go out.
+      - key: EMAIL_SERVICE
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: Nize Logistics <noreply@nizelogistics.com>
+      # Package photo uploads.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # Web push notifications to riders.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
         sync: false
     healthCheckPath: /health

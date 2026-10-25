@@ -3,7 +3,7 @@ import { db } from '../lib/db/index.js';
 import { users, orders } from '../lib/db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { authenticate, requireRole } from '../middleware/auth.js';
-import { reverseGeocode } from '../lib/google-maps.js';
+import { reverseGeocode } from '../lib/geocode.js';
 
 const router = express.Router();
 

@@ -75,11 +75,18 @@ export const orders = pgTable('orders', {
   pickupAddress: text('pickup_address').notNull(),
   pickupLat: decimal('pickup_lat', { precision: 10, scale: 7 }).notNull(),
   pickupLng: decimal('pickup_lng', { precision: 10, scale: 7 }).notNull(),
-  
+  // Human-readable name the customer gave this point ("Blue Gate behind the
+  // pharmacy"), plus its Plus Code. The code is the authoritative reference;
+  // the label is what the rider reads.
+  pickupLabel: varchar('pickup_label', { length: 120 }),
+  pickupPlusCode: varchar('pickup_plus_code', { length: 16 }),
+
   // Drop-off
   dropoffAddress: text('dropoff_address').notNull(),
   dropoffLat: decimal('dropoff_lat', { precision: 10, scale: 7 }).notNull(),
   dropoffLng: decimal('dropoff_lng', { precision: 10, scale: 7 }).notNull(),
+  dropoffLabel: varchar('dropoff_label', { length: 120 }),
+  dropoffPlusCode: varchar('dropoff_plus_code', { length: 16 }),
   
   // People
   senderName: varchar('sender_name', { length: 100 }).notNull(),
@@ -131,6 +138,36 @@ export const orders = pgTable('orders', {
   
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// =============== LOCATIONS (place cache) ===============
+// Nigeria has almost no machine-readable address data: OpenStreetMap has no
+// record of most businesses, and the commercial geocoders need a paid key. So
+// the platform keeps its own place cache.
+//
+// Every point a customer pins, and every point a rider confirms during a
+// delivery, lands here. Over time this becomes the company's own map of the
+// places that actually get delivered to — which no competitor can copy.
+//
+// `geom` is added by the migration (PostGIS point + GiST index) for spatial
+// queries. Drizzle reads and writes the plain columns and ignores `geom`.
+export const locations = pgTable('locations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  // What the customer called it, e.g. "Blue Gate behind the pharmacy".
+  label: varchar('label', { length: 120 }).notNull(),
+  plusCode: varchar('plus_code', { length: 16 }).notNull(),
+  lat: decimal('lat', { precision: 10, scale: 7 }).notNull(),
+  lng: decimal('lng', { precision: 10, scale: 7 }).notNull(),
+  // 'customer' — a sender/receiver pin
+  // 'rider'    — captured by a rider during a delivery
+  // 'admin'    — entered by staff
+  source: varchar('source', { length: 20 }).default('customer').notNull(),
+  createdById: uuid('created_by_id').references(() => users.id),
+  // How many orders have used this place. Drives "recent places" and lets the
+  // rider flywheel surface the destinations that actually get delivered to.
+  useCount: integer('use_count').default(0).notNull(),
+  lastUsedAt: timestamp('last_used_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 
 // =============== REPORTS ===============

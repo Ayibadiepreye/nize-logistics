@@ -6,6 +6,7 @@ import Footer from '@/components/Footer';
 import FloatingWhatsApp from '@/components/FloatingWhatsApp';
 import Link from 'next/link';
 import Icon from '@/components/Icon';
+import LocationCodeWidget from '@/components/LocationCodeWidget';
 
 export default function Home() {
   const [trackInput, setTrackInput] = useState('');
@@ -90,6 +91,11 @@ export default function Home() {
                       {trackError}
                     </p>
                   )}
+
+                  {/* Receiving a parcel? Fix your point and hand back a code. */}
+                  <div className="mt-4">
+                    <LocationCodeWidget />
+                  </div>
                 </div>
               </div>
 

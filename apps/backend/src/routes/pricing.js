@@ -2,11 +2,11 @@ import express from 'express';
 import { db } from '../lib/db/index.js';
 import { pricingConfig } from '../lib/db/schema.js';
 import { eq } from 'drizzle-orm';
-import { getDistanceMatrix, getDirections } from '../lib/google-maps.js';
+import { getDistanceMatrix, getDirections } from '../lib/routing.js';
 
 const router = express.Router();
 
-// Calculate delivery price using Google Maps Distance Matrix (public endpoint)
+// Calculate delivery price using OSM driving distance (public endpoint)
 router.post('/calculate', async (req, res, next) => {
   try {
     const { pickupLat, pickupLng, dropoffLat, dropoffLng } = req.body;
@@ -23,7 +23,7 @@ router.post('/calculate', async (req, res, next) => {
       return res.status(400).json({ error: 'Invalid coordinates' });
     }
 
-    // Get driving distance via Google Maps (falls back to Haversine)
+    // Get driving distance via OSM/OSRM (falls back to a straight-line estimate)
     const distanceData = await getDistanceMatrix(origin, destination);
 
     // Get pricing config from database
@@ -34,7 +34,7 @@ router.post('/calculate', async (req, res, next) => {
 
     const totalPrice = Math.max(minimumFare, baseFare + (distanceData.distanceKm * perKmRate));
 
-    // Get route directions (polyline for map rendering)
+    // Get route geometry (for drawing the path on the map)
     const directions = await getDirections(origin, destination);
 
     res.json({
@@ -56,9 +56,11 @@ router.post('/calculate', async (req, res, next) => {
         },
       },
       route: directions ? {
-        polyline: directions.polyline,
-        startAddress: directions.startAddress,
-        endAddress: directions.endAddress,
+        geometry: directions.geometry,
+        distanceText: directions.distanceText,
+        durationText: directions.durationText,
+        source: directions.source,
+        note: directions.note,
       } : null,
     });
   } catch (error) {

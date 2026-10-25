@@ -21,6 +21,35 @@ export const phoneSchema = z
 
 export const emailSchema = z.string().trim().toLowerCase().email('Enter a valid email address').max(255);
 
+/**
+ * Plus Code (Open Location Code). Optional on every input, because a caller who
+ * types an address by hand may not have one — but when supplied it must be
+ * structurally valid, so a typo cannot silently store a code that decodes to the
+ * other side of the country.
+ *
+ * A full code is 8-11 characters from the Plus Code alphabet, optionally with a
+ * '+' separator. A shortened code is also accepted (4-7 chars) because the UI
+ * may send one; it is resolved against the order's reference point on the
+ * server before use.
+ */
+export const plusCodeSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[23456789CFGHJMPQRVWX]{4,11}(\+[23456789CFGHJMPQRVWX]{1,7})?$/,
+    'That does not look like a valid location code')
+  .optional()
+  .nullable();
+
+/** The free-text name a customer gives a place, e.g. "Blue Gate behind the pharmacy". */
+export const placeLabelSchema = z
+  .string()
+  .trim()
+  .min(2, 'Give this place a short name')
+  .max(120, 'That name is too long')
+  .optional()
+  .nullable();
+
 export const latSchema = z.coerce
   .number({ invalid_type_error: 'Latitude must be a number' })
   .min(-90, 'Latitude out of range')
@@ -79,9 +108,13 @@ export const createOrderSchema = z.object({
   pickupAddress: z.string().trim().min(5, 'Pickup address is required').max(500),
   pickupLat: latSchema,
   pickupLng: lngSchema,
+  pickupLabel: placeLabelSchema,
+  pickupPlusCode: plusCodeSchema,
   dropoffAddress: z.string().trim().min(5, 'Drop-off address is required').max(500),
   dropoffLat: latSchema,
   dropoffLng: lngSchema,
+  dropoffLabel: placeLabelSchema,
+  dropoffPlusCode: plusCodeSchema,
   senderName: z.string().trim().min(2, 'Sender name is required').max(100),
   senderPhone: phoneSchema,
   senderWhatsapp: phoneSchema.optional().or(z.literal('')),
@@ -120,6 +153,10 @@ export const updateOrderSchema = z.object({
   pickupLng: lngSchema.optional(),
   dropoffLat: latSchema.optional(),
   dropoffLng: lngSchema.optional(),
+  pickupLabel: placeLabelSchema,
+  pickupPlusCode: plusCodeSchema,
+  dropoffLabel: placeLabelSchema,
+  dropoffPlusCode: plusCodeSchema,
   senderPhone: phoneSchema.optional(),
   recipientPhone: phoneSchema.optional(),
   notes: z.string().trim().max(1000).optional(),
@@ -130,6 +167,22 @@ export const cancelOrderSchema = z.object({
   reason: z.string().trim().max(500).optional(),
   // Proves ownership of an anonymously-placed order (admins don't need it).
   senderPhone: phoneSchema.optional(),
+});
+
+/**
+ * A rider confirming the exact drop-off point on a job they own.
+ *
+ * This is the flywheel input: every confirmed point becomes a place the next
+ * customer in that area can pick instead of dropping a fresh pin.
+ */
+export const captureLocationSchema = z.object({
+  orderId: z.string().uuid('A valid order is required'),
+  label: placeLabelSchema.refine((v) => v && v.length >= 2, {
+    message: 'Give this place a short name',
+  }),
+  lat: latSchema,
+  lng: lngSchema,
+  plusCode: plusCodeSchema,
 });
 
 export const inviteSchema = z.object({

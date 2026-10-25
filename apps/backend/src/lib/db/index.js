@@ -3,64 +3,79 @@ import pkg from 'pg';
 const { Pool } = pkg;
 import * as schema from './schema.js';
 
-// Parse connection string
+/**
+ * Database connection.
+ *
+ * SSL is ON by default and only turns off when the URL explicitly asks for
+ * plaintext (`sslmode=disable`). This used to be the reverse — SSL was only
+ * enabled when the URL contained `sslmode=require` — which meant a connection
+ * string without that parameter connected in plaintext. Neon terminates TLS at
+ * its proxy and refuses plaintext, so such a connection is rejected outright.
+ * Neon URLs do not carry `sslmode=require`, so this path has to default to on.
+ */
+
 const connectionString = process.env.DATABASE_URL;
 console.log('🔍 DATABASE_URL exists:', !!connectionString);
-console.log('🔍 DATABASE_URL length:', connectionString?.length || 0);
 
-const requireSSL = connectionString?.includes('sslmode=require');
-
-// Parse the DATABASE_URL manually to avoid pg parsing issues
-let poolConfig;
-if (connectionString) {
-  try {
-    const url = new URL(connectionString);
-    poolConfig = {
-      user: url.username,
-      password: url.password,
-      host: url.hostname,
-      port: parseInt(url.port) || 5432,
-      database: url.pathname.split('/')[1],
-      ssl: requireSSL ? {
-        rejectUnauthorized: false
-      } : false
-    };
-    console.log('🔍 DB Config:', {
-      user: poolConfig.user,
-      host: poolConfig.host,
-      database: poolConfig.database,
-      passwordLength: poolConfig.password?.length || 0,
-      passwordType: typeof poolConfig.password
-    });
-  } catch (error) {
-    console.error('Failed to parse DATABASE_URL:', error.message);
-    poolConfig = {
-      connectionString: process.env.DATABASE_URL,
-      ssl: requireSSL ? {
-        rejectUnauthorized: false
-      } : false
-    };
-  }
-} else {
-  poolConfig = {
-    connectionString: process.env.DATABASE_URL,
-    ssl: requireSSL ? {
-      rejectUnauthorized: false
-    } : false
-  };
+/** True only when the caller has explicitly asked for an unencrypted connection. */
+function sslExplicitlyDisabled(url) {
+  if (!url) return false;
+  const params = new URLSearchParams(url.search);
+  const mode = (params.get('sslmode') || '').toLowerCase();
+  if (mode === 'disable' || mode === 'prefer' || mode === 'allow') return true;
+  return false;
 }
 
-const pool = new Pool(poolConfig);
+function buildPoolConfig() {
+  const ssl = { rejectUnauthorized: false };
+
+  if (!connectionString) {
+    return { connectionString: null, ssl: false };
+  }
+
+  try {
+    const url = new URL(connectionString);
+    const config = {
+      user: decodeURIComponent(url.username),
+      password: decodeURIComponent(url.password),
+      host: url.hostname,
+      port: parseInt(url.port, 10) || 5432,
+      // Strip any query string that may be attached to the path.
+      database: url.pathname.replace(/^\//, '').split('?')[0],
+      ssl: sslExplicitlyDisabled(url) ? false : ssl,
+    };
+    console.log('🔍 DB Config:', {
+      host: config.host,
+      port: config.port,
+      database: config.database,
+      ssl: !!config.ssl,
+    });
+    return config;
+  } catch (error) {
+    console.error('Failed to parse DATABASE_URL:', error.message);
+    return {
+      connectionString,
+      ssl: connectionString.includes('sslmode=disable') ? false : ssl,
+    };
+  }
+}
+
+const pool = new Pool(buildPoolConfig());
+
+// Surface idle-client errors instead of letting them become unhandled rejections.
+pool.on('error', (error) => {
+  console.error('❌ Unexpected database pool error:', error.message);
+});
 
 export const db = drizzle(pool, { schema });
 
 export async function testConnection() {
   try {
     await pool.query('SELECT NOW()');
-    console.log('✅ Database connected to Neon');
+    console.log('✅ Database connected');
     return true;
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
-    throw error; // Don't exit process, let caller handle it
+    throw error; // Don't exit the process, let the caller handle it
   }
 }
