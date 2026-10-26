@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Nize Logistics — Platform Flow</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; font-family: var(--font-family, system-ui, sans-serif); color: var(--foreground); background: transparent; font-size: 13px; line-height: 1.45; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: -.02em; }
+  .sub { color: var(--muted-foreground); margin-bottom: 20px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted-foreground); margin: 26px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .lane { display: flex; gap: 8px; align-items: stretch; margin-bottom: 10px; }
+  .lane-label { flex: 0 0 108px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); padding-top: 10px; border-right: 2px solid var(--border); }
+  .nodes { flex: 1; display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-start; }
+  .node { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; min-width: 130px; max-width: 205px; }
+  .node b { display: block; font-size: 12px; margin-bottom: 3px; }
+  .node span { display: block; color: var(--muted-foreground); font-size: 11px; }
+  .node.admin { border-left: 3px solid #6366f1; }
+  .node.rider { border-left: 3px solid #10b981; }
+  .node.customer { border-left: 3px solid #0ea5e9; }
+  .node.api { border-left: 3px solid #f59e0b; }
+  .node.state { border-left: 3px solid #8b5cf6; }
+  .node.dead { border-left: 3px solid #ef4444; }
+  .node.pending { border-left: 3px solid #f59e0b; }
+  .node.done { border-left: 3px solid #10b981; }
+  .arrow { color: var(--muted-foreground); font-size: 14px; align-self: center; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .panel { flex: 1 1 340px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .panel h3 { margin: 0 0 8px; font-size: 13px; }
+  .panel ul { margin: 0; padding-left: 16px; color: var(--muted-foreground); font-size: 12px; }
+  .panel li { margin-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; background: var(--card); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  th { text-align: left; padding: 7px 9px; background: color-mix(in srgb, var(--foreground) 5%, transparent); font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted-foreground); }
+  td { padding: 6px 9px; border-top: 1px solid var(--border); vertical-align: top; }
+  code { font-family: ui-monospace, monospace; font-size: 11px; background: color-mix(in srgb, var(--foreground) 7%, transparent); padding: 1px 4px; border-radius: 4px; }
+  .m { display: inline-block; width: 42px; font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: .03em; }
+  .GET { color: #10b981; } .POST { color: #0ea5e9; } .PUT { color: #f59e0b; } .DELETE { color: #ef4444; } .PATCH { color: #8b5cf6; }
+  .gap { background: color-mix(in srgb, #ef4444 8%, transparent); border: 1px solid color-mix(in srgb, #ef4444 30%, transparent); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .gap b { color: #ef4444; }
+  .ok { background: color-mix(in srgb, #10b981 8%, transparent); border: 1px solid color-mix(in srgb, #10b981 30%, transparent); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .ok b { color: #10b981; }
+  .flowline { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+  .chip { background: color-mix(in srgb, var(--foreground) 7%, transparent); border-radius: 20px; padding: 3px 9px; font-size: 11px; }
+  .chip.hi { background: color-mix(in srgb, #8b5cf6 18%, transparent); font-weight: 600; }
+  .chip.bad { background: color-mix(in srgb, #ef4444 15%, transparent); }
+  .chip.good { background: color-mix(in srgb, #10b981 15%, transparent); }
+</style>
+</head>
+<body>
+
+<h1>Nize Logistics — Platform Flow</h1>
+<div class="sub">End-to-end: account creation → rider operations → order lifecycle → tracking → settlement. Every endpoint listed.</div>
+
+<div class="row">
+  <div class="panel">
+    <h3>Actors</h3>
+    <ul>
+      <li><b>Super Admin</</b> — invites admins, edits fare metrics, full audit</li>
+      <li><b>Admin</b> — invites riders, assigns orders, watches the fleet</li>
+      <li><b>Rider</b> — goes online, accepts/declines, executes the delivery</li>
+      <li><b>Customer</b> — books an order and tracks it, no account needed</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Access rules</h3>
+    <ul>
+      <li>Public site has <b>no sign-in link</b> — staff arrive by admin invite only</li>
+      <li><code>/login</code> still works for anyone who holds a URL</li>
+      <li><code>/signup/:token</code> is the only way to create a staff account, and the token is single-use</li>
+      <li>New riders are gated by <code>must_change_password</code> until they set their own password</li>
+    </ul>
+  </div>
+</div>
+
+<h2>1 · Account creation (no self-service signup)</h2>
+<div class="lane">
+  <div class="lane-label">Admin</div>
+  <div class="nodes">
+    <div class="node admin"><b>Log in</b><span>POST /api/auth/login</span></div>
+    <div class="arrow">→</div>
+    <div class="node admin"><b>Riders → Invite rider</b><span>POST /api/admin/invites</span></div>
+    <div class="arrow">→</div>
+    <div class="node admin"><b>Mailjet email sent</b><span>single-use token link</span></div>
+    <div class="arrow">→</div>
+    <div class="node rider"><b>Opens invite, signs up</b><span>POST /api/auth/signup/:token</span></div>
+    <div class="arrow">→</div>
+    <div class="node rider"><b>Forced password change</b><span>POST /api/auth/change-password</span></div>
+  </div>
+</div>
+
+<h2>2 · Rider management &amp; going online</h2>
+<div class="lane">
+  <div class="lane-label">Admin</div>
+  <div class="nodes">
+    <div class="node admin"><b>Live fleet map</b><span>socket <code>rider:location</code></span></div>
+    <div class="arrow">←</div>
+    <div class="node admin"><b>Reset a rider password</b><span>POST /api/admin/users/:id/reset-password</span></div>
+    <div class="arrow">·</div>
+    <div class="node admin"><b>Suspend account</b><span>POST /api/admin/users/:id/suspend</span></div>
+    <div class="arrow">·</div>
+    <div class="node admin"><b>Edit fare metrics</b><span>PUT /api/admin/pricing</span></div>
+  </div>
+</div>
+<div class="lane">
+  <div class="lane-label">Rider</div>
+  <div class="nodes">
+    <div class="node rider"><b>Toggle online</b><span>POST /api/rider/toggle-online</span></div>
+    <div class="arrow">→</div>
+    <div class="node api"><b>GPS broadcast</b><span>socket rider:location, 15s</span></div>
+    <div class="arrow">→</div>
+    <div class="node rider"><b>Sees route + own position</b><span>live map, draggable endpoint pins</span></div>
+  </div>
+</div>
+
+<h2>3 · Order lifecycle — the full state machine</h2>
+<div class="flowline">
+  <span class="chip pending">pending</span><span class="arrow">→</span>
+  <span class="chip">assigned</span><span class="arrow">→</span>
+  <span class="chip">accepted</span><span class="arrow">→</span>
+  <span class="chip">picked_up</span><span class="arrow">→</span>
+  <span class="chip">in_transit</span><span class="arrow">→</span>
+  <span class="chip good">delivered</span>
+</div>
+<div class="row">
+  <div class="panel">
+    <h3>Every legal transition (enforced server-side)</h3>
+    <ul>
+      <li><code>pending → assigned</code> · admin assigns a rider</li>
+      <li><code>pending → cancelled</code> · customer or admin cancels</li>
+      <li><code>assigned → accepted</code> · rider accepts</li>
+      <li><code>assigned → pending</code> · rider <b>declines</b> (unassigns)</li>
+      <li><code>accepted → picked_up</code> · rider reaches the sender</li>
+      <li><code>accepted → pending</code> · rider backs out</li>
+      <li><code>picked_up → in_transit</code> · rider departs</li>
+      <li><code>picked_up → delivered</code> · same-location shortcut</li>
+      <li><code>in_transit → delivered</code> · rider completes</li>
+      <li><code>delivered</code> / <code>cancelled</code> — <b>terminal, nothing leaves them</b></li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Rejection handling</h3>
+    <ul>
+      <li>Decline only legal from <code>assigned</code> — anything else returns <b>409</b></li>
+      <li>Declining returns the order to <code>pending</code> with <code>declinedCount + 1</code></li>
+      <li><code>declinedCount</code> feeds the admin alert threshold</li>
+      <li>Every decline writes an audit entry and emits <code>admin:order-update</code></li>
+      <li><b>No</b> penalty, no auto-reassign — an admin must reassign by hand</li>
+    </ul>
+  </div>
+</div>
+
+<h2>4 · Immediate vs scheduled</h2>
+<div class="row">
+  <div class="panel">
+    <h3>Immediate</h3>
+    <ul>
+      <li>Customer books → <code>pending</code></li>
+      <li>Admin assigns → <code>assigned</code></li>
+      <li>Rider accepts and runs it now</li>
+      <li>Route drawn from decoded Plus Codes, priced live by OSRM</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>Scheduled</h3>
+    <ul>
+      <li>Booking carries a <code>scheduledFor</code> timestamp</li>
+      <li>Sits in <code>pending</code> until dispatch</li>
+      <li>Admin assigns at the chosen time</li>
+      <li>Same rider flow from <code>assigned</code> onward</li>
+    </ul>
+  </div>
+</div>
+
+<h2>5 · Tracking &amp; receiving</h2>
+<div class="lane">
+  <div class="lane-label">Customer</div>
+  <div class="nodes">
+    <div class="node customer"><b>Places order</b><span>POST /api/orders</span></div>
+    <div class="arrow">→</div>
+    <div class="node customer"><b>Track by ticket</b><span>GET /api/tracking/:ticketId</span></div>
+    <div class="arrow">→</div>
+    <div class="node customer"><b>Live rider position</b><span>socket order:status-update</span></div>
+    <div class="arrow">→</div>
+    <div class="node customer"><b>Receives parcel</b><span>status: delivered</span></div>
+  </div>
+</div>
+<div class="lane">
+  <div class="lane-label">Rider</div>
+  <div class="nodes">
+    <div class="node rider"><b>Captures the place</b><span>POST /api/rider/locations/capture</span></div>
+    <div class="arrow">→</div>
+    <div class="node rider"><b>Marks arrival</b><span>manual button (map may lag)</span></div>
+    <div class="arrow">→</div>
+    <div class="node rider"><b>Completes with proof</b><span>POST /api/rider/orders/:id/deliver</span></div>
+  </div>
+</div>
+
+<h2>6 · Complete endpoint list</h2>
+<table>
+  <tr><th>Method</th><th>Endpoint</th><th>Who</th><th>Purpose</th></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/auth/login</code></td><td>public</td><td>Issue JWT</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/auth/signup/:token</code></td><td>invite</td><td>Redeem invite, create account</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/auth/change-password</code></td><td>staff</td><td>Set own password</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/auth/logout</code></td><td>staff</td><td>Client-side discard</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/orders</code></td><td>public</td><td>Create order (immediate/scheduled)</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/orders</code></td><td>staff</td><td>List / filter orders</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/orders/quote</code></td><td>public</td><td>Price a route</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/orders/:id</code></td><td>staff</td><td>Order detail</td></tr>
+  <tr><td><span class="m PUT">PUT</span></td><td><code>/api/orders/:id</code></td><td>staff</td><td>Update order</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/orders/:id/cancel</code></td><td>owner/admin</td><td>Cancel with reason</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/orders/:id/assign</code></td><td>admin</td><td>Assign rider</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/tracking/:ticketId</code></td><td>public</td><td>Status + route + rider</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/locations</code></td><td>staff</td><td>List saved places</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/locations</code></td><td>staff</td><td>Save a place</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/locations/:id</code></td><td>staff</td><td>Place detail</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/locations/resolve</code></td><td>staff</td><td>Plus Code → coords</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/locations/search</code></td><td>staff</td><td>Search the place cache</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/pricing</code></td><td>public</td><td>Current fare metrics</td></tr>
+  <tr><td><span class="m PUT">PUT</span></td><td><code>/api/pricing</code></td><td>admin</td><td>Update fare metrics</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/rider/dashboard</code></td><td>rider</td><td>Live job + earnings</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/rider/toggle-online</code></td><td>rider</td><td>Go online/offline</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/rider/orders/:id/accept</code></td><td>rider</td><td>Accept assignment</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/rider/orders/:id/decline</code></td><td>rider</td><td>Decline, back to pending</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/rider/orders/:id/pickup</code></td><td>rider</td><td>Mark collected</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/rider/orders/:id/in-transit</code></td><td>rider</td><td>Depart</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/rider/orders/:id/deliver</code></td><td>rider</td><td>Complete + COD</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/rider/locations/capture</code></td><td>rider</td><td>Save the place they delivered to</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/rider/history</code></td><td>rider</td><td>Delivery history + earnings</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/admin/overview</code></td><td>admin</td><td>Dashboard totals</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/admin/orders</code></td><td>admin</td><td>All orders</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/admin/riders</code></td><td>admin</td><td>Rider roster</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/admin/invites</code></td><td>admin</td><td>Invite rider/admin</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/admin/users/:id/reset-password</code></td><td>admin</td><td>Force password reset</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/admin/users/:id/suspend</code></td><td>admin</td><td>Suspend account</td></tr>
+  <tr><td><span class="m PUT">PUT</span></td><td><code>/api/admin/pricing</code></td><td>admin</td><td>Fare metrics</td></tr>
+  <tr><td><span class="m GET">GET</span></td><td><code>/api/admin/audit</code></td><td>admin</td><td>Audit trail</td></tr>
+  <tr><td><span class="m POST">POST</span></td><td><code>/api/admin/reports</code></td><td>admin</td><td>Export reports</td></tr>
+</table>
+
+<h2>7 · Honest gaps</h2>
+<div class="gap">
+  <b>Not built — no returns, no disputes.</b> There is no <code>returns</code> or <code>disputes</code> table, endpoint, or screen anywhere in the codebase. A customer who receives a damaged or wrong parcel has no channel to report it. If you want it, it needs: a table, a <code>POST /api/disputes</code> (customer) and an admin review flow.
+</div>
+<div class="gap">
+  <b>Not built — no rider payout.</b> Earnings accumulate per rider but nothing settles them. No payout table, no admin approval, no transfer integration.
+</div>
+<div class="gap">
+  <b>Not built — no multi-tenancy.</b> Every table lacks <code>organization_id</code>. One company per deployment works; two companies on one database would share data.
+</div>
+<div class="ok">
+  <b>Working.</b> Order lifecycle and rejection handling are enforced by a server-side transition table — a rider cannot deliver an order they never picked up, and an illegal jump returns 409.
+</div>
+
+</body>
+</html>

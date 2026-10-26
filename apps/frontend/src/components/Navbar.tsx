@@ -111,10 +111,12 @@ export default function Navbar() {
                 </button>
               </div>
             ) : (
+              /* No public "Sign in" here: staff accounts are created by an
+                 admin invite, not by signing up, so a login link on the
+                 marketing site would only invite credential guessing. The
+                 /login route and the endpoints behind it stay in place for
+                 people who already have an account. */
               <div className="nav-desktop-only flex items-center gap-2">
-                <Link href="/login" className="btn btn-ghost btn-sm">
-                  Sign in
-                </Link>
                 <Link href="/order" className="btn btn-primary btn-sm">
                   Book Now
                 </Link>
