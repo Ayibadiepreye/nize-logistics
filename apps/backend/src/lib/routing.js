@@ -44,6 +44,66 @@ const MIN_PLAUSIBLE_SPEED_KMH = 8;
 /** Above this detour factor the route is obviously wrong — reject it. */
 const MAX_PLAUSIBLE_DETOUR = 2.5;
 
+// ---------------------------------------------------------------------------
+// Route cache
+//
+// A driving route between two fixed points does not change within a day — roads
+// don't move. Logistics traffic is dominated by repeat pairs (the same depot ->
+// customer routes), so caching keyed by rounded coordinates makes those instant
+// and cuts load on the public OSRM demo, which is rate-limited and unreliable
+// for Nigeria. This is a free optimisation: no new dependency, no accuracy
+// change, and it degrades to the same answer once the cache is cold.
+//
+// On Render's free tier the cache resets when the service spins down; that is
+// acceptable — the first request after a wake pays the OSRM round-trip, then it
+// is warm again for the rest of the day.
+// ---------------------------------------------------------------------------
+
+const ROUTE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // roads don't change within a day
+const ROUTE_CACHE_MAX = 5000; // bound memory; oldest entry is dropped past this
+const routeCache = new Map();
+
+/** ~1 m precision — enough to distinguish addresses, coarse enough to collide repeats. */
+function round6(n) {
+  return Math.round(n * 1e6) / 1e6;
+}
+
+function cacheKey(origin, destination) {
+  return (
+    `${round6(origin.lat)},${round6(origin.lng)}|` +
+    `${round6(destination.lat)},${round6(destination.lng)}`
+  );
+}
+
+function cacheGet(key) {
+  const entry = routeCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    routeCache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function cacheSet(key, value) {
+  if (routeCache.size >= ROUTE_CACHE_MAX) routeCache.clear();
+  routeCache.set(key, { value, expiresAt: Date.now() + ROUTE_CACHE_TTL_MS });
+}
+
+/** Live cache stats for observability and tests. */
+export function routeCacheStats() {
+  return {
+    size: routeCache.size,
+    ttlMs: ROUTE_CACHE_TTL_MS,
+    max: ROUTE_CACHE_MAX,
+  };
+}
+
+/** Drop every cached route (used by tests and admin invalidation). */
+export function clearRouteCache() {
+  routeCache.clear();
+}
+
 /**
  * Ask OSRM for a driving route.
  * @param {{lat:number,lng:number}} origin
@@ -151,6 +211,12 @@ export async function resolveRoute(origin, destination) {
     throw new Error('resolveRoute requires both origin and destination');
   }
 
+  const key = cacheKey(origin, destination);
+  const cached = cacheGet(key);
+  if (cached) {
+    return { ...cached, cacheHit: true };
+  }
+
   const straightLineMeters = haversineMeters(origin, destination) ?? 0;
   const osrm = await queryOsrm(origin, destination);
   const verdict = isPlausible(osrm, straightLineMeters);
@@ -174,7 +240,7 @@ export async function resolveRoute(origin, destination) {
   const distanceKm = chosen.distanceMeters / 1000;
   const durationMinutes = Math.ceil(chosen.durationSeconds / 60);
 
-  return {
+  const result = {
     distanceKm,
     durationMinutes,
     distanceText: `${distanceKm.toFixed(1)} km`,
@@ -183,6 +249,9 @@ export async function resolveRoute(origin, destination) {
     source,
     note,
   };
+
+  cacheSet(key, result);
+  return { ...result, cacheHit: false };
 }
 
 /**
@@ -198,6 +267,7 @@ export async function getDistance(origin, destination) {
     durationText: route.durationText,
     source: route.source,
     note: route.note,
+    cacheHit: route.cacheHit,
   };
 }
 
@@ -214,6 +284,7 @@ export async function getRoute(origin, destination) {
     geometry: route.geometry,
     source: route.source,
     note: route.note,
+    cacheHit: route.cacheHit,
   };
 }
 

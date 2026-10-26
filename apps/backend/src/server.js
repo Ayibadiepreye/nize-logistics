@@ -12,6 +12,8 @@ import { testConnection } from './lib/db/index.js';
 import { setupSocket } from './socket/index.js';
 import { startCronJobs } from './cron/index.js';
 import { apiLimiter } from './middleware/rateLimit.js';
+import { getActiveEmailService } from './lib/email.js';
+import { routeCacheStats } from './lib/routing.js';
 
 import authRouter from './routes/auth.js';
 import ordersRouter from './routes/orders.js';
@@ -79,8 +81,10 @@ app.get('/health', (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     service: 'Nize Logistics API',
-    routing: process.env.OSRM_URL || 'osrm-public',
+    routing: process.env.OSRM_URL ? 'osrm-selfhosted' : 'osrm-public',
     places: 'own-cache',
+    email: getActiveEmailService(),
+    routeCache: routeCacheStats(),
   });
 });
 

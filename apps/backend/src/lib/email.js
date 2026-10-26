@@ -1,6 +1,23 @@
 import nodemailer from 'nodemailer';
 
-const service = process.env.EMAIL_SERVICE || 'smtp';
+/**
+ * Choose the email provider with EMAIL_SERVICE. Supported values:
+ *
+ *   smtp    — any SMTP provider: Mailjet, SendGrid SMTP, Mailgun SMTP,
+ *             Gmail (App Password), or a generic relay. Set SMTP_HOST,
+ *             SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, EMAIL_FROM.
+ *             (This is the default and what Mailjet uses today.)
+ *   resend  — Resend's API. Set RESEND_API_KEY and EMAIL_FROM.
+ *
+ * Switching providers is a matter of changing EMAIL_SERVICE and the matching
+ * variables — no code edit. Anything other than the two values above logs a
+ * warning and sends nothing, so a typo fails loudly instead of dropping mail.
+ */
+export function getActiveEmailService() {
+  return (process.env.EMAIL_SERVICE || 'smtp').toLowerCase();
+}
+
+const service = getActiveEmailService();
 console.log(`📧 Email service configured: ${service}`);
 
 // SMTP Transport (Mailjet or generic)
