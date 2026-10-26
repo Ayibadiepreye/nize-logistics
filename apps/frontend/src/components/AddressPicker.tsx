@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * One endpoint of a booking: the name, the written address, and the location code.
+ * One endpoint of a booking: the address and the location code.
  *
  * There is no map inside this component. Both endpoints are described here and
  * the single map beside the form is what shows them, so there is exactly one map
@@ -16,7 +16,8 @@
  *     receiver captures their own code and sends it, and the sender pastes it in.
  *
  * Typing or pasting a code anywhere decodes it locally and moves the map, so the
- * customer always sees where a code actually points before committing.
+ * customer always sees where a code actually points before committing. A pin can
+ * then be dragged to nudge it onto the right gate.
  */
 
 import { useState } from 'react';
@@ -39,9 +40,6 @@ interface AddressPickerProps {
   /** Free-text description of the place, e.g. "14 Aggrey Road". */
   address: string;
   onAddressChange: (address: string) => void;
-  /** The name the rider will read, e.g. "Blue Gate behind the pharmacy". */
-  placeName: string;
-  onPlaceNameChange: (name: string) => void;
   /** The Plus Code for this endpoint. */
   plusCode: string;
   onPlusCodeChange: (code: string) => void;
@@ -62,8 +60,6 @@ export default function AddressPicker({
   title,
   address,
   onAddressChange,
-  placeName,
-  onPlaceNameChange,
   plusCode,
   onPlusCodeChange,
   point,
@@ -142,30 +138,11 @@ export default function AddressPicker({
         </h3>
       </div>
 
-      {/* The name the rider reads. Required — a code alone does not tell a rider
-          which gate to stop at. */}
+      {/* The written address. The rider reads this to recognise the place; the
+          code is what actually places the pin. */}
       <div>
         <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
-          Name this place *
-        </label>
-        <input
-          type="text"
-          value={placeName}
-          onChange={(e) => onPlaceNameChange(e.target.value)}
-          placeholder="e.g. Blue Gate behind the pharmacy"
-          maxLength={120}
-          className="w-full px-3 py-2.5 rounded-lg border text-sm transition-colors"
-          style={inputStyle}
-        />
-        <p className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
-          The rider reads this. Be specific — gate colour, landmark, floor.
-        </p>
-      </div>
-
-      {/* Free-text description, kept because customers expect to type an address. */}
-      <div>
-        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
-          Address or directions
+          Address or directions *
         </label>
         <textarea
           value={address}

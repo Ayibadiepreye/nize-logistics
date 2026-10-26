@@ -158,8 +158,6 @@ export default function QuotesPage() {
                     title="Pickup location"
                     address={pickupAddress}
                     onAddressChange={setPickupAddress}
-                    placeName=""
-                    onPlaceNameChange={() => {}}
                     plusCode={pickupPlusCode}
                     onPlusCodeChange={(v) => {
                       setPickupPlusCode(v);
@@ -184,8 +182,6 @@ export default function QuotesPage() {
                     title="Drop-off location"
                     address={dropoffAddress}
                     onAddressChange={setDropoffAddress}
-                    placeName=""
-                    onPlaceNameChange={() => {}}
                     plusCode={dropoffPlusCode}
                     onPlusCodeChange={(v) => {
                       setDropoffPlusCode(v);

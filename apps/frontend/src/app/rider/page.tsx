@@ -68,10 +68,17 @@ function RiderDashboard() {
   const [pickupOpen, setPickupOpen] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
+  // Set once the rider confirms they have reached the place, so the UI can say
+  // so even if the map has not caught up with them yet.
+  const [arrived, setArrived] = useState(false);
 
   // Kept in a ref so the geolocation timer always sees the live values without
   // being torn down and rebuilt on every state change.
   const stateRef = useRef({ isOnline: false, orderId: null as string | null });
+
+  // The rider's own GPS fix, plotted on the route map so they can see themselves
+  // moving along the path towards the destination.
+  const [riderPosition, setRiderPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -117,9 +124,12 @@ function RiderDashboard() {
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          const fix = { lat: position.coords.latitude, lng: position.coords.longitude };
+          // Kept locally as well as broadcast, so the rider's own map shows them.
+          setRiderPosition(fix);
           socket.emit('rider:location', {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
+            lat: fix.lat,
+            lng: fix.lng,
             orderId,
           });
         },
@@ -315,6 +325,9 @@ function RiderDashboard() {
             onOpenTracking={() => openLiveTracking(job.ticketId)}
             onOpenNavigation={openNavigation}
             onCapturePlace={capturePlace}
+            riderPosition={riderPosition}
+            arrived={arrived}
+            onMarkArrived={() => setArrived(true)}
           />
         ) : (
           <Card>
@@ -449,6 +462,9 @@ function ActiveJob({
   onOpenTracking,
   onOpenNavigation,
   onCapturePlace,
+  riderPosition,
+  arrived,
+  onMarkArrived,
 }: {
   job: any;
   busy: boolean;
@@ -460,6 +476,11 @@ function ActiveJob({
   onOpenTracking: () => void;
   onOpenNavigation: (address?: string) => void;
   onCapturePlace: () => void;
+  /** The rider's own GPS fix, plotted on the route map. */
+  riderPosition: { lat: number; lng: number } | null;
+  /** Whether the rider has confirmed they reached the place. */
+  arrived: boolean;
+  onMarkArrived: () => void;
 }) {
   // Where the rider is headed right now decides which address and contact matter.
   const headingToPickup = [ORDER_STATUS.ASSIGNED, ORDER_STATUS.ACCEPTED].includes(job.status);
@@ -597,9 +618,36 @@ function ActiveJob({
               pickupLng={Number(job.pickupLng)}
               dropoffLat={Number(job.dropoffLat)}
               dropoffLng={Number(job.dropoffLng)}
+              pickupAddress={job.pickupAddress}
+              dropoffAddress={job.dropoffAddress}
+              livePosition={
+                riderPosition
+                  ? { lat: riderPosition.lat, lng: riderPosition.lng, label: 'You are here' }
+                  : null
+              }
               className="h-full w-full"
             />
           </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <p className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+              {riderPosition
+                ? 'Live — the blue pin is you, moving along the route.'
+                : 'Turn on location to see yourself on the route.'}
+            </p>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={onMarkArrived}
+            >
+              <MapPin size={13} />
+              I have arrived
+            </button>
+          </div>
+          {arrived && (
+            <p className="mt-1 text-[11px] font-semibold" style={{ color: 'var(--success, #10b981)' }}>
+              Arrival noted — you can complete the delivery when the recipient is ready.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

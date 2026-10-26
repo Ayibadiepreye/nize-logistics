@@ -34,6 +34,12 @@ export interface MapMarker {
   position: [number, number];
   popup?: string;
   icon?: 'pickup' | 'dropoff' | 'rider';
+  /**
+   * Whether this pin can be dragged. Defaults to true when the map is in
+   * draggable mode, so a read-only marker (a rider's position, say) opts out
+   * rather than every marker opting in.
+   */
+  draggable?: boolean;
 }
 
 export interface MapProps {
@@ -62,6 +68,21 @@ export interface MapProps {
    * than only to a clicked pin. The `nonce` lets the same point be re-issued.
    */
   focusPoint?: { lat: number; lng: number; zoom?: number; nonce?: number } | null;
+  /**
+   * Let the caller drag the pins to nudge a placement.
+   *
+   * A captured code can land a few metres from the actual gate; dragging the pin
+   * is how that gets corrected. The new coordinates come back through
+   * `onMarkerMove`, which lets the caller re-derive the code and re-price.
+   */
+  draggableMarkers?: boolean;
+  /** Called with the pin's previous position and its new one after a drag. */
+  onMarkerMove?: (from: [number, number], to: { lat: number; lng: number }) => void;
+  /**
+   * A live position plotted alongside the markers — a rider's own GPS fix.
+   * Shown read-only: it is a report, not a choice.
+   */
+  livePosition?: { lat: number; lng: number; label?: string } | null;
 }
 
 type LeafletModule = typeof import('leaflet');
@@ -163,6 +184,9 @@ export default function Map(props: MapProps) {
     height = 300,
     followCenter = false,
     focusPoint = null,
+    draggableMarkers = false,
+    onMarkerMove,
+    livePosition = null,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -171,6 +195,11 @@ export default function Map(props: MapProps) {
   const routeLayerRef = useRef<import('leaflet').LayerGroup | null>(null);
   const markerLayerRef = useRef<import('leaflet').LayerGroup | null>(null);
   const clickHandlerRef = useRef<((lat: number, lng: number) => void) | null>(null);
+  // Same trick for the drag callback: the Leaflet listener is bound once per
+  // marker, so it must reach the current handler rather than the first one.
+  const markerMoveRef = useRef<
+    ((from: [number, number], to: { lat: number; lng: number }) => void) | null
+  >(null);
 
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadError, setLoadError] = useState('');
@@ -182,6 +211,10 @@ export default function Map(props: MapProps) {
   useEffect(() => {
     clickHandlerRef.current = onMapClick ?? null;
   }, [onMapClick]);
+
+  useEffect(() => {
+    markerMoveRef.current = onMarkerMove ?? null;
+  }, [onMarkerMove]);
 
   // Initialise the map once.
   useEffect(() => {
@@ -262,9 +295,38 @@ export default function Map(props: MapProps) {
       const kind: IconKind = (m.icon as IconKind) ?? 'pickup';
       if (!iconCache[kind]) iconCache[kind] = makePinIcon(L, kind);
 
-      const marker = L.marker(m.position, { icon: iconCache[kind]! });
+      const marker = L.marker(m.position, {
+        icon: iconCache[kind]!,
+        // Only the two endpoints are draggable — the route itself and a rider's
+        // reported position are both read-only.
+        draggable: draggableMarkers && m.draggable !== false,
+      });
       if (m.popup) marker.bindPopup(m.popup);
+
+      // Report the new position as the pin is moved, so the caller can re-derive
+      // the code and re-price. `dragend` rather than `drag` avoids firing on
+      // every pixel of the drag.
+      if (draggableMarkers && m.draggable !== false) {
+        marker.on('dragend', () => {
+          const pos = marker.getLatLng();
+          markerMoveRef.current?.(m.position, { lat: pos.lat, lng: pos.lng });
+        });
+      }
+
       marker.addTo(markerLayer);
+    }
+
+    // A live fix (a rider's own position). Never draggable, and deliberately kept
+    // out of the framing bounds so the map does not jump every time it updates.
+    if (livePosition && Number.isFinite(livePosition.lat) && Number.isFinite(livePosition.lng)) {
+      if (!iconCache.rider) iconCache.rider = makePinIcon(L, 'rider');
+      const live = L.marker([livePosition.lat, livePosition.lng], {
+        icon: iconCache.rider!,
+        draggable: false,
+        zIndexOffset: 1000,
+      });
+      if (livePosition.label) live.bindPopup(livePosition.label);
+      live.addTo(markerLayer);
     }
 
     if (routePoints.length > 1) {
@@ -284,7 +346,7 @@ export default function Map(props: MapProps) {
     if (allPoints.length > 1) {
       map.fitBounds(allPoints, { padding: [30, 30], maxZoom: 15 });
     }
-  }, [markers, routePoints, status]);
+  }, [markers, routePoints, status, livePosition]);
 
   // Optionally follow a moving centre (a rider's position, for example).
   useEffect(() => {

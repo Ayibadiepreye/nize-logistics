@@ -10,7 +10,7 @@ import AddressPicker, { type PickedPoint } from '@/components/AddressPicker';
 import MapPreview from '@/components/MapPreview';
 import api from '@/lib/api';
 import Icon from '@/components/Icon';
-import { decodePlusCode, isValidPlusCode } from '@/lib/plusCode';
+import { decodePlusCode, encodePlusCode, isValidPlusCode } from '@/lib/plusCode';
 
 // Dynamically import map to avoid SSR issues
 // No longer needed - using MapPreview directly
@@ -28,12 +28,10 @@ export default function CreateOrder() {
     pickupAddress: '',
     pickupLat: '',
     pickupLng: '',
-    pickupLabel: '',
     pickupPlusCode: '',
     dropoffAddress: '',
     dropoffLat: '',
     dropoffLng: '',
-    dropoffLabel: '',
     dropoffPlusCode: '',
     senderName: '',
     senderPhone: '',
@@ -107,6 +105,27 @@ export default function CreateOrder() {
     }));
   };
 
+  /**
+   * The customer dragged a pin to nudge it onto the right gate.
+   *
+   * The code is re-derived from wherever the pin landed, because the code is what
+   * gets stored and priced — leaving it stale would mean the map and the fare
+   * describe two different places.
+   */
+  const handleMarkerMove = (from: [number, number], to: { lat: number; lng: number }) => {
+    const field: 'pickup' | 'dropoff' =
+      Math.abs(from[0] - parseFloat(formData.pickupLat || '0')) < 1e-9 &&
+      Math.abs(from[1] - parseFloat(formData.pickupLng || '0')) < 1e-9
+        ? 'pickup'
+        : 'dropoff';
+
+    const plusCode = encodePlusCode(to.lat, to.lng) || '';
+
+    updateField(`${field}Lat`, to.lat.toString());
+    updateField(`${field}Lng`, to.lng.toString());
+    updateField(`${field}PlusCode`, plusCode);
+  };
+
   /** The pin currently captured for an endpoint, if any. */
   const pointFor = (field: 'pickup' | 'dropoff'): PickedPoint | null => {
     const lat = parseFloat(formData[`${field}Lat`]);
@@ -129,18 +148,14 @@ export default function CreateOrder() {
         setError('Enter a location code for the drop-off — paste the code the receiver sends you.');
         return;
       }
-      // The rider navigates by the name, not by the code. A pin with no name
-      // tells them where but not which gate to stop at.
-      if (!formData.pickupLabel.trim()) {
-        setError('Name the pickup place — the rider needs to know which gate or landmark.');
+      // The rider navigates by the written address, not by the code. A pin with
+      // no description tells them where but not which gate to stop at.
+      if (!formData.pickupAddress.trim()) {
+        setError('Describe the pickup place — the rider needs to know which gate or landmark.');
         return;
       }
-      if (!formData.dropoffLabel.trim()) {
-        setError('Name the drop-off place — the rider needs to know which gate or landmark.');
-        return;
-      }
-      if (!formData.pickupAddress.trim() || !formData.dropoffAddress.trim()) {
-        setError('Please describe both the pickup and drop-off places.');
+      if (!formData.dropoffAddress.trim()) {
+        setError('Describe the drop-off place — the rider needs to know which gate or landmark.');
         return;
       }
     } else if (step === 2) {
@@ -347,8 +362,6 @@ export default function CreateOrder() {
                     title="Pickup location *"
                     address={formData.pickupAddress}
                     onAddressChange={(v) => updateField('pickupAddress', v)}
-                    placeName={formData.pickupLabel}
-                    onPlaceNameChange={(v) => updateField('pickupLabel', v)}
                     plusCode={formData.pickupPlusCode}
                     onPlusCodeChange={(v) => handlePlusCodeChange('pickup', v)}
                     point={pointFor('pickup')}
@@ -363,8 +376,6 @@ export default function CreateOrder() {
                       title="Drop-off location *"
                       address={formData.dropoffAddress}
                       onAddressChange={(v) => updateField('dropoffAddress', v)}
-                      placeName={formData.dropoffLabel}
-                      onPlaceNameChange={(v) => updateField('dropoffLabel', v)}
                       plusCode={formData.dropoffPlusCode}
                       onPlusCodeChange={(v) => handlePlusCodeChange('dropoff', v)}
                       point={pointFor('dropoff')}
@@ -409,10 +420,12 @@ export default function CreateOrder() {
                     pickupLng={parseFloat(formData.pickupLng)}
                     dropoffLat={parseFloat(formData.dropoffLat)}
                     dropoffLng={parseFloat(formData.dropoffLng)}
-                    pickupLabel={formData.pickupLabel}
-                    dropoffLabel={formData.dropoffLabel}
+                    pickupAddress={formData.pickupAddress}
+                    dropoffAddress={formData.dropoffAddress}
                     routeGeometry={routeGeometry}
                     focusPoint={focusPoint}
+                    draggableMarkers
+                    onMarkerMove={handleMarkerMove}
                   />
                 </div>
               </div>
