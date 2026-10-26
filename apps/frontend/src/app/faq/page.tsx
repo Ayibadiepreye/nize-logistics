@@ -58,10 +58,6 @@ export default function FAQPage() {
         {
           q: 'Are there any hidden fees?',
           a: 'No hidden fees! The price quoted is the price you pay. All costs are transparent and shown upfront before you confirm your order.'
-        },
-        {
-          q: 'Can I get a refund if my package is delayed?',
-          a: 'Yes. If we fail to deliver within the promised timeframe due to our fault, you are eligible for a full refund. Contact our support team with your tracking ID.'
         }
       ]
     },

@@ -21,7 +21,7 @@ import MapPreview from '@/components/MapPreview';
 import { getCurrentPosition } from '@/lib/plusCode';
 import api, { apiError } from '@/lib/api';
 import { getSocket } from '@/lib/socket';
-import { naira, relativeTime, timeOnly } from '@/lib/format';
+import { relativeTime, timeOnly } from '@/lib/format';
 import { ORDER_STATUS, statusLabel } from '@/lib/orderStatus';
 import {
   Badge,
@@ -51,9 +51,9 @@ export default function RiderPage() {
 
 interface DashboardData {
   currentJob: any | null;
-  today: { deliveries: number; earnings: string };
-  week: { deliveries: number; earnings: string };
-  lifetime: { deliveries: number; earnings: string };
+  today: { deliveries: number };
+  week: { deliveries: number };
+  lifetime: { deliveries: number };
   isOnline: boolean;
   isBusy: boolean;
 }
@@ -289,25 +289,23 @@ function RiderDashboard() {
           </InlineAlert>
         )}
 
-        {/* Earnings stay a compact strip even on a phone — the live job below is
-            the reason a rider opens this screen, and must not be pushed off it. */}
+        {/* A compact activity strip — deliveries done, no money. Pay is settled
+            offline, so the app tracks the work, not the wages. The live job below
+            is the reason a rider opens this screen and must stay on it. */}
         <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          <EarningsTile
+          <DeliveryStat
             label="Today"
-            amount={data.today.earnings}
             count={data.today.deliveries}
             icon={<Wallet size={14} />}
             highlight
           />
-          <EarningsTile
+          <DeliveryStat
             label="This week"
-            amount={data.week.earnings}
             count={data.week.deliveries}
             icon={<Clock size={14} />}
           />
-          <EarningsTile
+          <DeliveryStat
             label="All time"
-            amount={data.lifetime.earnings}
             count={data.lifetime.deliveries}
             icon={<CheckCircle2 size={14} />}
           />
@@ -403,15 +401,13 @@ function RiderDashboard() {
 
 /* ------------------------------------------------------------- fragments */
 
-function EarningsTile({
+function DeliveryStat({
   label,
-  amount,
   count,
   icon,
   highlight,
 }: {
   label: string;
-  amount: string;
   count: number;
   icon: React.ReactNode;
   highlight?: boolean;
@@ -441,10 +437,10 @@ function EarningsTile({
         className="kpi-value text-[17px] sm:text-[26px]"
         style={{ color: highlight ? 'var(--brand-text)' : undefined }}
       >
-        {naira(amount)}
+        {count}
       </div>
       <div className="kpi-meta text-[11px] sm:text-[12px]">
-        {count} deliver{count === 1 ? 'y' : 'ies'}
+        deliver{count === 1 ? 'y' : 'ies'}
       </div>
     </div>
   );
@@ -537,12 +533,6 @@ function ActiveJob({
           <p className="mt-0.5 text-[13px]" style={{ color: 'rgba(255,255,255,0.82)' }}>
             {job.distanceKm} km · {job.paymentMethod === 'cod' ? 'Collect cash on delivery' : 'Paid online'}
           </p>
-        </div>
-        <div className="text-right">
-          <p className="text-[11px] uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.7)' }}>
-            You earn
-          </p>
-          <p className="text-[22px] font-bold tabular-nums">{naira(job.totalPrice)}</p>
         </div>
       </div>
 
@@ -952,7 +942,7 @@ function HistoryCard() {
         title="Delivery history"
         subtitle={
           summary
-            ? `${summary.delivered} completed · ${naira(summary.earnings)} earned`
+            ? `${summary.delivered} completed`
             : 'Your completed and cancelled jobs'
         }
       />
@@ -966,7 +956,7 @@ function HistoryCard() {
         <EmptyState
           icon={<Bike size={20} />}
           title="No deliveries yet"
-          description="Once you complete your first delivery it will show up here with what you earned."
+          description="Once you complete your first delivery it will show up here."
         />
       ) : (
         <>
@@ -983,9 +973,6 @@ function HistoryCard() {
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <StatusBadge status={o.status} />
-                  <span className="w-20 text-right text-[13.5px] font-semibold tabular-nums">
-                    {naira(o.totalPrice)}
-                  </span>
                   <span className="hidden w-24 text-right text-[12.5px] sm:block" style={{ color: 'var(--text-muted)' }}>
                     {relativeTime(o.deliveredAt || o.createdAt)}
                   </span>
