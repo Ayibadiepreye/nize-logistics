@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import Icon from '@/components/Icon';
 import api, { apiError } from '@/lib/api';
 import { naira } from '@/lib/format';
+import { decodePlusCode } from '@/lib/plusCode';
 
 export default function QuotesPage() {
   const router = useRouter();
@@ -19,10 +20,12 @@ export default function QuotesPage() {
   // Address-based quote — priced on real road distance from the backend rather
   // than a straight line between the two pins.
   const [pickupAddress, setPickupAddress] = useState('');
+  const [pickupPlusCode, setPickupPlusCode] = useState('');
   const [pickupLat, setPickupLat] = useState<number | null>(null);
   const [pickupLng, setPickupLng] = useState<number | null>(null);
   const [pickupPoint, setPickupPoint] = useState<PickedPoint | null>(null);
   const [dropoffAddress, setDropoffAddress] = useState('');
+  const [dropoffPlusCode, setDropoffPlusCode] = useState('');
   const [dropoffLat, setDropoffLat] = useState<number | null>(null);
   const [dropoffLng, setDropoffLng] = useState<number | null>(null);
   const [dropoffPoint, setDropoffPoint] = useState<PickedPoint | null>(null);
@@ -157,6 +160,16 @@ export default function QuotesPage() {
                     onAddressChange={setPickupAddress}
                     placeName=""
                     onPlaceNameChange={() => {}}
+                    plusCode={pickupPlusCode}
+                    onPlusCodeChange={(v) => {
+                      setPickupPlusCode(v);
+                      const decoded = decodePlusCode(v.trim().toUpperCase());
+                      if (decoded) {
+                        setPickupPoint({ lat: decoded.lat, lng: decoded.lng, plusCode: v.trim().toUpperCase() });
+                        setPickupLat(decoded.lat);
+                        setPickupLng(decoded.lng);
+                      }
+                    }}
                     point={pickupPoint}
                     onPointChange={(p) => {
                       setPickupPoint(p);
@@ -164,6 +177,7 @@ export default function QuotesPage() {
                       setPickupLng(p.lng);
                     }}
                     icon="pickup"
+                    allowGpsCapture
                   />
 
                   <AddressPicker
@@ -172,6 +186,16 @@ export default function QuotesPage() {
                     onAddressChange={setDropoffAddress}
                     placeName=""
                     onPlaceNameChange={() => {}}
+                    plusCode={dropoffPlusCode}
+                    onPlusCodeChange={(v) => {
+                      setDropoffPlusCode(v);
+                      const decoded = decodePlusCode(v.trim().toUpperCase());
+                      if (decoded) {
+                        setDropoffPoint({ lat: decoded.lat, lng: decoded.lng, plusCode: v.trim().toUpperCase() });
+                        setDropoffLat(decoded.lat);
+                        setDropoffLng(decoded.lng);
+                      }
+                    }}
                     point={dropoffPoint}
                     onPointChange={(p) => {
                       setDropoffPoint(p);

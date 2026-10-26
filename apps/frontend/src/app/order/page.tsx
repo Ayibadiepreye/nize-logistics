@@ -10,6 +10,7 @@ import AddressPicker, { type PickedPoint } from '@/components/AddressPicker';
 import MapPreview from '@/components/MapPreview';
 import api from '@/lib/api';
 import Icon from '@/components/Icon';
+import { decodePlusCode, isValidPlusCode } from '@/lib/plusCode';
 
 // Dynamically import map to avoid SSR issues
 // No longer needed - using MapPreview directly
@@ -48,6 +49,23 @@ export default function CreateOrder() {
 
   const [priceEstimate, setPriceEstimate] = useState<any>(null);
   const [estimating, setEstimating] = useState(false);
+  /**
+   * Where the map should fly to.
+   *
+   * Set whenever a location code is entered — by GPS or by hand — so the map
+   * moves to the point the customer just gave rather than waiting for a click.
+   * `nonce` lets the same coordinates be re-issued.
+   */
+  const [focusPoint, setFocusPoint] = useState<{
+    lat: number;
+    lng: number;
+    nonce: number;
+  } | null>(null);
+  /** The road path between the endpoints, drawn once both codes are known. */
+  const [routeGeometry, setRouteGeometry] = useState<{
+    type: 'LineString';
+    coordinates: number[][];
+  } | null>(null);
 
   const updateField = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -58,6 +76,35 @@ export default function CreateOrder() {
     updateField(`${field}Lat`, point.lat.toString());
     updateField(`${field}Lng`, point.lng.toString());
     updateField(`${field}PlusCode`, point.plusCode);
+    // Land the pin on the map immediately.
+    setFocusPoint((prev) => ({
+      lat: point.lat,
+      lng: point.lng,
+      nonce: (prev?.nonce ?? 0) + 1,
+    }));
+  };
+
+  /**
+   * A location code typed or pasted by hand.
+   *
+   * Decoding here rather than at the server means the map moves straight away
+   * and a bad code is caught while the customer is still looking at the field.
+   */
+  const handlePlusCodeChange = (field: 'pickup' | 'dropoff', raw: string) => {
+    const cleaned = raw.trim().toUpperCase();
+    updateField(`${field}PlusCode`, cleaned);
+
+    if (!cleaned || !isValidPlusCode(cleaned)) return;
+    const decoded = decodePlusCode(cleaned);
+    if (!decoded) return;
+
+    updateField(`${field}Lat`, decoded.lat.toString());
+    updateField(`${field}Lng`, decoded.lng.toString());
+    setFocusPoint((prev) => ({
+      lat: decoded.lat,
+      lng: decoded.lng,
+      nonce: (prev?.nonce ?? 0) + 1,
+    }));
   };
 
   /** The pin currently captured for an endpoint, if any. */
@@ -75,14 +122,24 @@ export default function CreateOrder() {
       // A fare cannot be computed without coordinates, and a delivery cannot be
       // found without them either — so both endpoints must have a real pin.
       if (!pointFor('pickup')) {
-        setError('Capture the pickup location — tap the map or use "Get My Location Code".');
+        setError('Enter a location code for the pickup — tap "Get My Location Code" or paste one.');
         return;
       }
       if (!pointFor('dropoff')) {
-        setError('Capture the drop-off location — tap the map or use "Get My Location Code".');
+        setError('Enter a location code for the drop-off — paste the code the receiver sends you.');
         return;
       }
-      if (!formData.pickupAddress || !formData.dropoffAddress) {
+      // The rider navigates by the name, not by the code. A pin with no name
+      // tells them where but not which gate to stop at.
+      if (!formData.pickupLabel.trim()) {
+        setError('Name the pickup place — the rider needs to know which gate or landmark.');
+        return;
+      }
+      if (!formData.dropoffLabel.trim()) {
+        setError('Name the drop-off place — the rider needs to know which gate or landmark.');
+        return;
+      }
+      if (!formData.pickupAddress.trim() || !formData.dropoffAddress.trim()) {
         setError('Please describe both the pickup and drop-off places.');
         return;
       }
@@ -148,6 +205,10 @@ export default function CreateOrder() {
         duration: data.duration.text,
         durationMinutes: data.duration.minutes,
       });
+
+      // The routing engine already traced the road path while pricing this trip.
+      // Keep it so the map can draw the route the customer is paying for.
+      setRouteGeometry(data.route?.geometry ?? null);
     } catch (err) {
       // Fallback to Haversine calculation
       const R = 6371;
@@ -169,6 +230,16 @@ export default function CreateOrder() {
         price: price.toFixed(2),
         duration: `~${Math.ceil((distance / 30) * 60)} mins`,
         durationMinutes: Math.ceil((distance / 30) * 60),
+      });
+
+      // No routing engine answer, so fall back to a straight line between the
+      // two pins rather than showing no path at all.
+      setRouteGeometry({
+        type: 'LineString',
+        coordinates: [
+          [pickupLng, pickupLat],
+          [dropoffLng, dropoffLat],
+        ],
       });
     } finally {
       setEstimating(false);
@@ -278,9 +349,13 @@ export default function CreateOrder() {
                     onAddressChange={(v) => updateField('pickupAddress', v)}
                     placeName={formData.pickupLabel}
                     onPlaceNameChange={(v) => updateField('pickupLabel', v)}
+                    plusCode={formData.pickupPlusCode}
+                    onPlusCodeChange={(v) => handlePlusCodeChange('pickup', v)}
                     point={pointFor('pickup')}
                     onPointChange={(p) => applyPoint('pickup', p)}
                     icon="pickup"
+                    allowGpsCapture
+                    hint="Tap “Get My Location Code” to fill this from your GPS, or paste a code."
                   />
 
                   <div style={{ marginTop: '16px' }}>
@@ -290,9 +365,12 @@ export default function CreateOrder() {
                       onAddressChange={(v) => updateField('dropoffAddress', v)}
                       placeName={formData.dropoffLabel}
                       onPlaceNameChange={(v) => updateField('dropoffLabel', v)}
+                      plusCode={formData.dropoffPlusCode}
+                      onPlusCodeChange={(v) => handlePlusCodeChange('dropoff', v)}
                       point={pointFor('dropoff')}
                       onPointChange={(p) => applyPoint('dropoff', p)}
                       icon="dropoff"
+                      hint="The receiver captures their own code and sends it to you — paste it here."
                     />
                   </div>
 
@@ -319,13 +397,22 @@ export default function CreateOrder() {
               </div>
 
               <div className="card" style={{ height: '500px', padding: '16px' }}>
-                <h3 className="font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Map Preview</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold" style={{ color: 'var(--text-primary)' }}>Route Preview</h3>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                    {routeGeometry ? 'Showing the road path between both pins' : 'Enter both location codes to see the route'}
+                  </span>
+                </div>
                 <div style={{ height: 'calc(100% - 40px)' }}>
                   <MapPreview
                     pickupLat={parseFloat(formData.pickupLat)}
                     pickupLng={parseFloat(formData.pickupLng)}
                     dropoffLat={parseFloat(formData.dropoffLat)}
                     dropoffLng={parseFloat(formData.dropoffLng)}
+                    pickupLabel={formData.pickupLabel}
+                    dropoffLabel={formData.dropoffLabel}
+                    routeGeometry={routeGeometry}
+                    focusPoint={focusPoint}
                   />
                 </div>
               </div>

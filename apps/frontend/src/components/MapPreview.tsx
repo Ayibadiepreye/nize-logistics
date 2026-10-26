@@ -19,8 +19,13 @@ interface MapPreviewProps {
   pickupLng?: number;
   dropoffLat?: number;
   dropoffLng?: number;
+  /** What the customer called each place, shown on the pin. */
+  pickupLabel?: string;
+  dropoffLabel?: string;
   /** A GeoJSON LineString from the backend's routing engine, when available. */
   routeGeometry?: { type: 'LineString'; coordinates: number[][] } | null;
+  /** Fly to this point — set when a location code is entered. */
+  focusPoint?: { lat: number; lng: number; zoom?: number; nonce?: number } | null;
   className?: string;
   height?: number;
 }
@@ -30,17 +35,28 @@ export default function MapPreview({
   pickupLng,
   dropoffLat,
   dropoffLng,
+  pickupLabel = '',
+  dropoffLabel = '',
   routeGeometry = null,
+  focusPoint = null,
   className = '',
   height = 300,
 }: MapPreviewProps) {
   const markers: Array<{ position: [number, number]; icon: 'pickup' | 'dropoff'; popup: string }> = [];
 
   if (pickupLat && pickupLng && !Number.isNaN(pickupLat) && !Number.isNaN(pickupLng)) {
-    markers.push({ position: [pickupLat, pickupLng], icon: 'pickup', popup: 'Pickup' });
+    markers.push({
+      position: [pickupLat, pickupLng],
+      icon: 'pickup',
+      popup: pickupLabel || 'Pickup',
+    });
   }
   if (dropoffLat && dropoffLng && !Number.isNaN(dropoffLat) && !Number.isNaN(dropoffLng)) {
-    markers.push({ position: [dropoffLat, dropoffLng], icon: 'dropoff', popup: 'Drop-off' });
+    markers.push({
+      position: [dropoffLat, dropoffLng],
+      icon: 'dropoff',
+      popup: dropoffLabel || 'Drop-off',
+    });
   }
 
   return (
@@ -55,6 +71,7 @@ export default function MapPreview({
       zoom={13}
       markers={markers}
       routeGeometry={routeGeometry}
+      focusPoint={focusPoint}
       className={className}
       height={height}
       showRouteInfo={!!routeGeometry}

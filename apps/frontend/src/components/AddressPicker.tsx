@@ -1,29 +1,29 @@
 'use client';
 
 /**
- * Location capture for a pickup or drop-off point.
+ * One endpoint of a booking: the name, the written address, and the location code.
  *
- * This replaces the Google Places autocomplete, which needed a paid API key and
- * which — measured, not assumed — returns nothing for most Nigerian businesses.
- * OpenStreetMap has no record of them either.
+ * There is no map inside this component. Both endpoints are described here and
+ * the single map beside the form is what shows them, so there is exactly one map
+ * in the flow and it can draw the route between the two.
  *
- * So the flow is coordinate-first:
- *   1. The customer taps "Get My Location Code" (or taps the map) to fix a point.
- *   2. That point is encoded locally into a Plus Code — no network call, no key.
- *   3. The customer names the place in their own words, because the rider needs
- *      "Blue Gate behind the pharmacy" far more than a coordinate.
- *   4. "Confirm Coordinates" opens the exact point in a map app so the customer
- *      can see it land on the right building before committing.
+ * The location code is the authoritative part. It is an editable field because
+ * the two ends of a delivery are usually known by different people:
  *
- * The name and the code together are what make a delivery findable in a city
- * where most places have no street address.
+ *   - Pickup: the sender is here, so they tap "Get My Location Code" and the
+ *     field fills itself from the device GPS.
+ *   - Drop-off: the receiver is elsewhere, so there is no GPS button. The
+ *     receiver captures their own code and sends it, and the sender pastes it in.
+ *
+ * Typing or pasting a code anywhere decodes it locally and moves the map, so the
+ * customer always sees where a code actually points before committing.
  */
 
 import { useState } from 'react';
-import Map from '@/components/Map';
 import {
   getCurrentPosition,
-  encodePlusCode,
+  decodePlusCode,
+  isValidPlusCode,
   mapsSearchUrl,
   type GeoError,
 } from '@/lib/plusCode';
@@ -42,10 +42,19 @@ interface AddressPickerProps {
   /** The name the rider will read, e.g. "Blue Gate behind the pharmacy". */
   placeName: string;
   onPlaceNameChange: (name: string) => void;
+  /** The Plus Code for this endpoint. */
+  plusCode: string;
+  onPlusCodeChange: (code: string) => void;
   point: PickedPoint | null;
   onPointChange: (point: PickedPoint) => void;
   icon: 'pickup' | 'dropoff';
-  /** Hint shown under the map. */
+  /**
+   * Whether to offer "Get My Location Code".
+   *
+   * True for pickup (the sender is standing there). False for drop-off, where
+   * the code has to come from the receiver.
+   */
+  allowGpsCapture?: boolean;
   hint?: string;
 }
 
@@ -55,28 +64,27 @@ export default function AddressPicker({
   onAddressChange,
   placeName,
   onPlaceNameChange,
+  plusCode,
+  onPlusCodeChange,
   point,
   onPointChange,
   icon,
+  allowGpsCapture = false,
   hint,
 }: AddressPickerProps) {
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
-  /** Read the device GPS and derive a code. */
+  const accent = icon === 'pickup' ? '#0066ff' : '#ff3366';
+
+  /** Read the device GPS, derive a code, and fill the field from it. */
   const handleGetLocation = async () => {
     setError(null);
-    setNotice(null);
     setLocating(true);
     try {
       const captured = await getCurrentPosition();
-      onPointChange({
-        lat: captured.lat,
-        lng: captured.lng,
-        plusCode: captured.plusCode,
-      });
-      setNotice(`Location captured — code ${captured.plusCode}`);
+      onPlusCodeChange(captured.plusCode);
+      onPointChange({ lat: captured.lat, lng: captured.lng, plusCode: captured.plusCode });
     } catch (err) {
       const geoErr = err as GeoError;
       setError(geoErr.friendly || 'We could not read your location.');
@@ -85,45 +93,60 @@ export default function AddressPicker({
     }
   };
 
-  /** Let the customer place the pin by hand, for when GPS is off or wrong. */
-  const handleMapClick = (lat: number, lng: number) => {
-    const plusCode = encodePlusCode(lat, lng);
-    if (!plusCode) return;
-    onPointChange({ lat, lng, plusCode });
-    setError(null);
-    setNotice(`Pin placed — code ${plusCode}`);
+  /**
+   * A code typed or pasted by hand.
+   *
+   * Decoding locally means the map can move to the point immediately, with no
+   * round trip — and an invalid code is caught here rather than at the server.
+   */
+  const handleCodeChange = (raw: string) => {
+    const cleaned = raw.trim().toUpperCase();
+    onPlusCodeChange(cleaned);
+
+    if (!cleaned) return;
+
+    if (!isValidPlusCode(cleaned)) {
+      // Not a complete code yet — the customer may still be typing.
+      if (cleaned.length >= 8) setError('That does not look like a complete location code.');
+      return;
+    }
+
+    const decoded = decodePlusCode(cleaned);
+    if (decoded) {
+      setError(null);
+      onPointChange({ lat: decoded.lat, lng: decoded.lng, plusCode: cleaned });
+    }
   };
 
-  /** Open the exact point in a map app so the customer can verify it. */
+  /** Open the point in a map app so the customer can verify it. */
   const handleConfirm = () => {
     if (!point) {
-      setError('Capture your location first, or tap the map to place the pin.');
+      setError('Enter a location code first.');
       return;
     }
     window.open(mapsSearchUrl(point.lat, point.lng), '_blank', 'noopener,noreferrer');
   };
 
-  const accent = icon === 'pickup' ? '#0066ff' : '#ff3366';
+  const inputStyle = {
+    background: 'var(--bg-primary)',
+    borderColor: 'var(--border)',
+    color: 'var(--text-primary)',
+  } as const;
 
   return (
     <div className="w-full space-y-3">
       <div className="flex items-center gap-2">
-        <span
-          className="inline-block h-2.5 w-2.5 rounded-full"
-          style={{ background: accent }}
-        />
+        <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: accent }} />
         <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
           {title}
         </h3>
       </div>
 
-      {/* The name the rider reads. */}
+      {/* The name the rider reads. Required — a code alone does not tell a rider
+          which gate to stop at. */}
       <div>
-        <label
-          className="block text-xs font-medium mb-1"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          Name this place
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+          Name this place *
         </label>
         <input
           type="text"
@@ -132,11 +155,7 @@ export default function AddressPicker({
           placeholder="e.g. Blue Gate behind the pharmacy"
           maxLength={120}
           className="w-full px-3 py-2.5 rounded-lg border text-sm transition-colors"
-          style={{
-            background: 'var(--bg-primary)',
-            borderColor: 'var(--border)',
-            color: 'var(--text-primary)',
-          }}
+          style={inputStyle}
         />
         <p className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
           The rider reads this. Be specific — gate colour, landmark, floor.
@@ -145,10 +164,7 @@ export default function AddressPicker({
 
       {/* Free-text description, kept because customers expect to type an address. */}
       <div>
-        <label
-          className="block text-xs font-medium mb-1"
-          style={{ color: 'var(--text-secondary)' }}
-        >
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
           Address or directions
         </label>
         <textarea
@@ -158,61 +174,77 @@ export default function AddressPicker({
           rows={2}
           maxLength={500}
           className="w-full px-3 py-2.5 rounded-lg border text-sm resize-none transition-colors"
-          style={{
-            background: 'var(--bg-primary)',
-            borderColor: 'var(--border)',
-            color: 'var(--text-primary)',
-          }}
+          style={inputStyle}
         />
       </div>
 
-      {/* Capture controls. */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={handleGetLocation}
-          disabled={locating}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white transition-opacity disabled:opacity-60"
-          style={{ background: accent }}
-        >
-          {locating ? (
-            <span className="spinner" style={{ width: 12, height: 12 }} />
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-              <path d="M12 21s-7-6.1-7-11a7 7 0 1114 0c0 4.9-7 11-7 11z" />
-              <circle cx="12" cy="10" r="2.6" />
-            </svg>
-          )}
-          {locating ? 'Getting location…' : 'Get My Location Code'}
-        </button>
+      {/* The location code — the part that actually places the pin. */}
+      <div>
+        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>
+          Location code *
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <input
+            type="text"
+            value={plusCode}
+            onChange={(e) => handleCodeChange(e.target.value)}
+            placeholder="e.g. 6FP9R28X+6W"
+            maxLength={16}
+            spellCheck={false}
+            autoComplete="off"
+            className="flex-1 min-w-[190px] px-3 py-2.5 rounded-lg border text-sm font-mono uppercase transition-colors"
+            style={inputStyle}
+          />
 
-        <button
-          type="button"
-          onClick={handleConfirm}
-          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors"
-          style={{
-            borderColor: 'var(--border)',
-            color: 'var(--text-primary)',
-            background: 'var(--bg-primary)',
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-            <path d="M9 20l-5.5-2.5v-13L9 7l6-2.5L20.5 7v13L15 17.5 9 20z" />
-            <path d="M9 7v13M15 4.5v13" />
-          </svg>
-          Confirm Coordinates
-        </button>
+          {allowGpsCapture && (
+            <button
+              type="button"
+              onClick={handleGetLocation}
+              disabled={locating}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+              style={{ background: accent }}
+            >
+              {locating ? (
+                <span className="spinner" style={{ width: 12, height: 12 }} />
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                  <path d="M12 21s-7-6.1-7-11a7 7 0 1114 0c0 4.9-7 11-7 11z" />
+                  <circle cx="12" cy="10" r="2.6" />
+                </svg>
+              )}
+              {locating ? 'Getting location…' : 'Get My Location Code'}
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleConfirm}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors"
+            style={{
+              borderColor: 'var(--border)',
+              color: 'var(--text-primary)',
+              background: 'var(--bg-primary)',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+              <path d="M9 20l-5.5-2.5v-13L9 7l6-2.5L20.5 7v13L15 17.5 9 20z" />
+              <path d="M9 7v13M15 4.5v13" />
+            </svg>
+            Confirm Coordinates
+          </button>
+        </div>
+
+        {allowGpsCapture ? (
+          <p className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Tap the button to fill this from your GPS, or paste a code.
+          </p>
+        ) : (
+          <p className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Ask the receiver to send you their location code, then paste it here.
+          </p>
+        )}
       </div>
 
-      {/* Status. */}
-      {notice && (
-        <div
-          className="rounded-lg px-3 py-2 text-xs font-mono"
-          style={{ background: 'rgba(16,185,129,0.12)', color: '#059669' }}
-        >
-          {notice}
-        </div>
-      )}
       {error && (
         <div
           className="rounded-lg px-3 py-2 text-xs"
@@ -222,25 +254,7 @@ export default function AddressPicker({
         </div>
       )}
 
-      {/* The map is the source of truth: the pin is the location. */}
-      <Map
-        center={point ? [point.lat, point.lng] : [4.8156, 7.0498]}
-        zoom={point ? 16 : 13}
-        height={260}
-        onMapClick={handleMapClick}
-        markers={
-          point
-            ? [
-                {
-                  position: [point.lat, point.lng],
-                  icon,
-                  popup: placeName || point.plusCode,
-                },
-              ]
-            : []
-        }
-      />
-
+      {/* The decoded position, shown so the customer can see the code resolved. */}
       {point ? (
         <div
           className="rounded-lg px-3 py-2 text-xs flex items-center justify-between"
@@ -255,7 +269,7 @@ export default function AddressPicker({
         </div>
       ) : (
         <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-          {hint ?? 'Tap the map to place a pin, or use the button above.'}
+          {hint ?? 'Enter a location code and the map will move to it.'}
         </p>
       )}
     </div>

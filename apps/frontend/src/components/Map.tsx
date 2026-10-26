@@ -18,6 +18,18 @@
 import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 
+/**
+ * Expose the Leaflet instance for diagnostics.
+ *
+ * A ref would only be reachable from inside this component. Attaching it to the
+ * window lets the running UI be inspected from outside — DevTools, or a test
+ * driving the page over CDP — to answer "did the map actually move to the code
+ * that was just entered?"
+ */
+if (typeof window !== 'undefined') {
+  (window as unknown as { __nizeMap?: unknown }).__nizeMap = undefined;
+}
+
 export interface MapMarker {
   position: [number, number];
   popup?: string;
@@ -42,6 +54,14 @@ export interface MapProps {
   height?: number;
   /** When true the map pans to `center` whenever it changes. */
   followCenter?: boolean;
+  /**
+   * Command the map to fly to a point.
+   *
+   * This is how an entered location code moves the view: the caller decodes the
+   * code and passes the result here, so the map reacts to a pasted code rather
+   * than only to a clicked pin. The `nonce` lets the same point be re-issued.
+   */
+  focusPoint?: { lat: number; lng: number; zoom?: number; nonce?: number } | null;
 }
 
 type LeafletModule = typeof import('leaflet');
@@ -142,6 +162,7 @@ export default function Map(props: MapProps) {
     onMapClick,
     height = 300,
     followCenter = false,
+    focusPoint = null,
   } = props;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -197,6 +218,8 @@ export default function Map(props: MapProps) {
 
         mapInstanceRef.current = map;
         setStatus('ready');
+        // See the note at the top of this file.
+        (window as unknown as { __nizeMap?: unknown }).__nizeMap = map;
       } catch (err) {
         if (cancelled) return;
         setLoadError(err instanceof Error ? err.message : 'unknown error');
@@ -269,6 +292,19 @@ export default function Map(props: MapProps) {
     if (!map || status !== 'ready' || !followCenter) return;
     map.setView(center, undefined, { animate: true });
   }, [center, followCenter, status]);
+
+  // Fly to an explicitly requested point. Keyed on the whole object so a repeat
+  // of the same coordinates still moves the view when the nonce changes.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || status !== 'ready' || !focusPoint) return;
+    if (!Number.isFinite(focusPoint.lat) || !Number.isFinite(focusPoint.lng)) return;
+    map.setView(
+      [focusPoint.lat, focusPoint.lng],
+      focusPoint.zoom ?? 16,
+      { animate: true }
+    );
+  }, [focusPoint, status]);
 
   return (
     <div className={`relative w-full ${className}`} style={{ height }}>
