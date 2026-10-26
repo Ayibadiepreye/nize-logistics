@@ -660,6 +660,28 @@ router.post('/invite', validateBody(inviteSchema), async (req, res, next) => {
       return res.status(409).json({ error: 'An account with that email already exists' });
     }
 
+    // A pending invite is also a conflict. Without this, the same address could
+    // be invited any number of times — each sending another email and stacking
+    // unusable signup links in the invites table.
+    const [pending] = await db
+      .select({ id: invites.id, expiresAt: invites.expiresAt })
+      .from(invites)
+      .where(
+        and(
+          eq(sql`lower(${invites.email})`, email.toLowerCase()),
+          eq(invites.used, false),
+          gte(invites.expiresAt, new Date())
+        )
+      )
+      .limit(1);
+
+    if (pending) {
+      return res.status(409).json({
+        error: 'There is already a pending invite for that email',
+        expiresAt: pending.expiresAt,
+      });
+    }
+
     const token = nanoid(32);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
