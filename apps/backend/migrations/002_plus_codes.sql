@@ -22,7 +22,13 @@
 --   (or: npm run migrate)
 -- =============================================================================
 
-BEGIN;
+-- No explicit BEGIN/COMMIT here. The runner sends the whole file as one query,
+-- which Postgres wraps in an implicit transaction — so a failure part-way through
+-- rolls the entire file back. Explicit transaction control would commit
+-- statements as it went and leave a half-applied migration behind.
+--
+-- This file also deliberately does NOT write to schema_migrations. The runner
+-- owns that ledger and records the filename itself once the file succeeds.
 
 -- -----------------------------------------------------------------------------
 -- 1. Orders — Plus Code + label on each endpoint
@@ -92,13 +98,3 @@ BEGIN
     END IF;
   END IF;
 END $$;
-
--- -----------------------------------------------------------------------------
--- 4. Record which migration has run
--- -----------------------------------------------------------------------------
--- Records that this file has run. Uses the same `filename` column the runner
--- creates, so the two agree.
-INSERT INTO schema_migrations (filename) VALUES ('002_plus_codes.sql')
-  ON CONFLICT (filename) DO NOTHING;
-
-COMMIT;
