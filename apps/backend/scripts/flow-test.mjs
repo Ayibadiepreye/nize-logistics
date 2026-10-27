@@ -465,6 +465,27 @@ async function main() {
     finalStatuses[0] === 'delivered' && finalStatuses[1] === 'delivered' && finalStatuses[2] === 'in_transit',
     finalStatuses.join(','));
 
+  // ---------- live rerouting: rider's live GPS -> drop-off ----------
+  console.log('\nLIVE RE ROUTING');
+  const inTransitOrder = (created[2].body.order || created[2].body);
+  const loc = await api('POST', '/api/location/update', {
+    token: riderTok,
+    body: { lat: 4.82, lng: 7.05, orderId: inTransitOrder.id },
+  });
+  check('rider location recorded', loc.status === 200, `got ${loc.status}`);
+  const liveTrack = await api('GET', `/api/tracking/${inTransitOrder.ticketId}`);
+  check('in-transit tracking returns a live route',
+    !!liveTrack.body?.liveRoute?.geometry?.coordinates,
+    liveTrack.body?.liveRoute?.source || 'no liveRoute');
+  check('live route gives remaining distance',
+    !!liveTrack.body?.liveRoute?.distanceText,
+    liveTrack.body?.liveRoute?.distanceText || '');
+  // A delivered order must not leak a live route.
+  const deliveredTrack = await api('GET', `/api/tracking/${order1.ticketId}`);
+  check('delivered order has no live route',
+    deliveredTrack.body?.liveRoute === undefined || deliveredTrack.body?.liveRoute === null,
+    'leaked a liveRoute');
+
   // ---------- 12. Audit ----------
   console.log('\n12. AUDIT TRAIL');
   const audit = await api('GET', '/api/admin/audit', { token: adminTok });

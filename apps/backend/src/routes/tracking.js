@@ -35,6 +35,9 @@ router.get('/:ticketId', lookupLimiter, async (req, res, next) => {
     }
 
     let riderData = null;
+    // The rider's raw GPS fix, kept in the outer scope so the live-rerouting
+    // block below can route from it — the `rider` row is scoped to the if.
+    let riderPos = null;
     if (order.assignedRiderId) {
       const [rider] = await db
         .select({
@@ -52,6 +55,9 @@ router.get('/:ticketId', lookupLimiter, async (req, res, next) => {
 
       if (rider) {
         const live = ACTIVE_RIDER_STATUSES.includes(order.status);
+        if (rider.currentLat && rider.currentLng) {
+          riderPos = { lat: parseFloat(rider.currentLat), lng: parseFloat(rider.currentLng) };
+        }
         riderData = {
           fullName: rider.fullName,
           vehicleType: rider.vehicleType,
@@ -88,7 +94,39 @@ router.get('/:ticketId', lookupLimiter, async (req, res, next) => {
       }
     }
 
-    res.json({ order: trackingOrder(order), rider: riderData, route, orderId: order.id });
+    // Live rerouting: while the rider is en route, also return the path from
+    // their CURRENT GPS position to the drop-off. This is recomputed on every
+    // tracking poll, so as the rider moves — or takes a different road — the
+    // remaining path on the map updates to follow them. It reuses the same
+    // routing engine as `route` above (cached where the rider's position
+    // repeats), so it is free to run today and switches to a self-hosted engine
+    // purely via OSRM_URL. Only active, positioned riders in transit get it.
+    let liveRoute = null;
+    if (
+      order.status === 'in_transit' &&
+      riderPos &&
+      order.dropoffLat && order.dropoffLng
+    ) {
+      try {
+        const live = await getDirections(
+          riderPos,
+          { lat: parseFloat(order.dropoffLat), lng: parseFloat(order.dropoffLng) }
+        );
+        if (live) {
+          liveRoute = {
+            geometry: live.geometry,
+            distanceText: live.distanceText,
+            durationText: live.durationText,
+            source: live.source,
+            note: live.note,
+          };
+        }
+      } catch (error) {
+        console.warn('[maps] tracking live route unavailable:', error.message);
+      }
+    }
+
+    res.json({ order: trackingOrder(order), rider: riderData, route, liveRoute, orderId: order.id });
   } catch (error) {
     next(error);
   }
