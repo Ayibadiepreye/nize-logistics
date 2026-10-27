@@ -39,6 +39,19 @@ services:
         sync: false
       - key: EMAIL_FROM
         value: Nize Logistics <noreply@nizelogistics.com>
+      # Mailjet SMTP. HOST/PORT default to these values in code but are declared
+      # for clarity. USER/PASS are secrets: sync:false means the real values live
+      # in Render's Environment (Secret Store), NOT in this file. Set them in the
+      # Render dashboard (Environment tab), or hand over a Render API key and the
+      # values get set programmatically instead.
+      - key: SMTP_HOST
+        value: smtp.mailjet.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
       # Package photo uploads.
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
