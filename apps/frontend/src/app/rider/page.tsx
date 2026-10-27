@@ -49,8 +49,16 @@ export default function RiderPage() {
   );
 }
 
+interface LegRoute {
+  geometry: { type: 'LineString'; coordinates: number[][] } | null;
+  distanceKm: number;
+  durationMinutes: number;
+  headingToPickup: boolean;
+}
+
 interface DashboardData {
   currentJob: any | null;
+  route: LegRoute | null;
   today: { deliveries: number };
   week: { deliveries: number };
   lifetime: { deliveries: number };
@@ -61,6 +69,7 @@ interface DashboardData {
 function RiderDashboard() {
   const toast = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
+  const [route, setRoute] = useState<LegRoute | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -84,6 +93,7 @@ function RiderDashboard() {
     try {
       const { data } = await api.get('/rider/dashboard');
       setData(data);
+      setRoute(data.route ?? null);
       stateRef.current = { isOnline: data.isOnline, orderId: data.currentJob?.id ?? null };
       setError('');
     } catch (err) {
@@ -96,6 +106,25 @@ function RiderDashboard() {
   useEffect(() => {
     load();
   }, [load]);
+
+  /**
+   * Live route tracking. While a job is active, re-poll the rider's current
+   * leg every 20s so the road path and remaining distance/time follow them as
+   * they drive — including a reroute if they take a different road.
+   */
+  useEffect(() => {
+    const jobId = data?.currentJob?.id;
+    if (!jobId) return;
+    const timer = setInterval(async () => {
+      try {
+        const { data } = await api.get('/rider/current/route');
+        setRoute(data.route ?? null);
+      } catch {
+        // Keep the last good route on a transient failure.
+      }
+    }, 20000);
+    return () => clearInterval(timer);
+  }, [data?.currentJob?.id]);
 
   /**
    * Live updates + location reporting.
@@ -314,6 +343,7 @@ function RiderDashboard() {
         {job ? (
           <ActiveJob
             job={job}
+            route={route}
             busy={busy}
             onAccept={() => act(`/rider/accept/${job.id}`, undefined, 'Delivery accepted')}
             onDecline={() => setDeclineOpen(true)}
@@ -449,6 +479,7 @@ function DeliveryStat({
 /** The live job card — one obvious next action, everything else secondary. */
 function ActiveJob({
   job,
+  route,
   busy,
   onAccept,
   onDecline,
@@ -463,6 +494,7 @@ function ActiveJob({
   onMarkArrived,
 }: {
   job: any;
+  route: LegRoute | null;
   busy: boolean;
   onAccept: () => void;
   onDecline: () => void;
@@ -610,6 +642,7 @@ function ActiveJob({
               dropoffLng={Number(job.dropoffLng)}
               pickupAddress={job.pickupAddress}
               dropoffAddress={job.dropoffAddress}
+              routeGeometry={route?.geometry ?? null}
               livePosition={
                 riderPosition
                   ? { lat: riderPosition.lat, lng: riderPosition.lng, label: 'You are here' }
@@ -620,9 +653,13 @@ function ActiveJob({
           </div>
           <div className="mt-1.5 flex items-center justify-between gap-2">
             <p className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-              {riderPosition
-                ? 'Live — the blue pin is you, moving along the route.'
-                : 'Turn on location to see yourself on the route.'}
+              {route
+                ? `~${route.distanceKm >= 1 ? `${route.distanceKm.toFixed(1)} km` : `${Math.round(route.distanceKm * 1000)} m`} · ~${Math.round(
+                    route.durationMinutes
+                  )} min to ${route.headingToPickup ? 'pickup' : 'drop-off'}`
+                : riderPosition
+                  ? 'Live — the blue pin is you, moving along the route.'
+                  : 'Turn on location to see yourself on the route.'}
             </p>
             <button
               type="button"

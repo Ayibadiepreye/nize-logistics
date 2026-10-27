@@ -13,7 +13,7 @@ import {
   STATUS_LABELS,
 } from '../lib/orderStatus.js';
 import { validateBody, validateUuidParam, riderStatusUpdateSchema, captureLocationSchema } from '../lib/validate.js';
-import { getDistanceMatrix } from '../lib/routing.js';
+import { getDistanceMatrix, getDirections } from '../lib/routing.js';
 import { encodePlusCode, isValidPlusCode } from '../lib/plusCode.js';
 
 const router = express.Router();
@@ -99,6 +99,36 @@ async function advanceStatus({ req, order, nextStatus, extra = {} }) {
   return updated;
 }
 
+/**
+ * The road route for the rider's current leg: from their last reported GPS fix
+ * to the pickup (before they've collected the parcel) or to the drop-off (once
+ * they have). Same routing engine as the tracking page. Best-effort — returns
+ * null (the map falls back to a straight line) when the rider has no position,
+ * the job has no coordinates, or the routing engine is down. Shared by the
+ * dashboard and the live `/current/route` poll.
+ */
+async function computeLegRoute(currentJob, riderLat, riderLng) {
+  if (!currentJob || !riderLat || !riderLng) return null;
+  const headingToPickup = !['picked_up', 'in_transit'].includes(currentJob.status);
+  const destLat = headingToPickup ? currentJob.pickupLat : currentJob.dropoffLat;
+  const destLng = headingToPickup ? currentJob.pickupLng : currentJob.dropoffLng;
+  if (!destLat || !destLng) return null;
+  try {
+    const r = await getDirections(
+      { lat: parseFloat(riderLat), lng: parseFloat(riderLng) },
+      { lat: parseFloat(destLat), lng: parseFloat(destLng) }
+    );
+    return {
+      geometry: r.geometry,
+      distanceKm: r.distanceKm,
+      durationMinutes: r.durationMinutes,
+      headingToPickup,
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
 /** Dashboard: live job, today's numbers, lifetime totals. */
 router.get('/dashboard', async (req, res, next) => {
   try {
@@ -132,8 +162,13 @@ router.get('/dashboard', async (req, res, next) => {
 
     const sum = (rows) => rows.reduce((acc, r) => acc + parseFloat(r.total || 0), 0);
 
+    // The road route for the rider's current leg (location -> pickup, or
+    // location -> drop-off once collected) — shown on their own map.
+    const route = await computeLegRoute(currentJob, req.user.currentLat, req.user.currentLng);
+
     res.json({
       currentJob: riderOrder(currentJob),
+      route,
       today: { deliveries: todayRows.length, earnings: sum(todayRows).toFixed(2) },
       week: { deliveries: weekRows.length, earnings: sum(weekRows).toFixed(2) },
       lifetime: {
@@ -143,6 +178,22 @@ router.get('/dashboard', async (req, res, next) => {
       isOnline: req.user.isOnline,
       isBusy: req.user.isBusy,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Live route poll. The rider's map re-queries this every ~20s so the road path
+ * and remaining distance/time track them as they drive — including a reroute
+ * if they take a different road. Returns null when there is no active job or
+ * the rider hasn't reported a position yet.
+ */
+router.get('/current/route', authenticate, requireRider, blockIfPasswordResetPending, async (req, res, next) => {
+  try {
+    const currentJob = await loadCurrentJob(req.user.id);
+    const route = await computeLegRoute(currentJob, req.user.currentLat, req.user.currentLng);
+    res.json({ route });
   } catch (error) {
     next(error);
   }

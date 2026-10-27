@@ -294,6 +294,19 @@ async function main() {
   check('rider accepts', accept1.status === 200, `got ${accept1.status}`);
   check('now accepted', (await fetchOrder(order1.id)).status === 'accepted');
 
+  // Rider's own route map: from their live GPS fix to the pickup (they're
+  // heading to pickup). The dashboard and the live poll both return the real
+  // road route, not a straight line.
+  await api('POST', '/api/location/update', { token: riderTok, body: { lat: 6.5054, lng: 3.3266 } });
+  const dashRoute = await api('GET', '/api/rider/dashboard', { token: riderTok });
+  check('rider dashboard returns a leg route',
+    dashRoute.status === 200 && !!dashRoute.body?.route?.geometry && dashRoute.body.route.headingToPickup === true,
+    `status ${dashRoute.status}, geometry ${!!dashRoute.body?.route?.geometry}`);
+  const legRoute = await api('GET', '/api/rider/current/route', { token: riderTok });
+  check('rider live route poll returns a road route',
+    legRoute.status === 200 && !!legRoute.body?.route?.geometry && legRoute.body.route.distanceKm > 0,
+    `status ${legRoute.status}, geometry ${!!legRoute.body?.route?.geometry}, dist ${legRoute.body?.route?.distanceKm}`);
+
   const pickup1 = await api('POST', `/api/rider/pickup/${order1.id}`, {
     token: riderTok, body: { notes: 'Collected from the gate' },
   });

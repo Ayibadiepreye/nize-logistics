@@ -29,10 +29,12 @@ services:
       # server is not good enough. Unset means the public demo is used.
       - key: OSRM_URL
         sync: false
-      # Email delivery. Either Resend or SMTP; without one, no order
-      # notifications go out.
+      # Email delivery. Choose one provider:
+      #   smtp    -> Mailjet (current default). Needs SMTP_HOST/PORT/USER/PASS.
+      #   resend  -> Resend. Needs RESEND_API_KEY.
+      # Switch by changing this value (and having that provider's keys set).
       - key: EMAIL_SERVICE
-        value: resend
+        value: smtp
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM
